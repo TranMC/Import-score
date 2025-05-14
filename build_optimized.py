@@ -50,12 +50,11 @@ if not os.path.exists("dist"):
 # Các options tối ưu để giảm kích thước
 options = [
     'import_score.py',
-    f'--name=Quản lý điểm học sinh v{version}',
+    f'--name=Student Score Import v{version}',
     '--onefile',
     '--windowed',
     '--icon=app.ico',
     '--clean',
-    '--exclude-module=matplotlib',
     '--exclude-module=scipy',
     '--exclude-module=PyQt5',
     '--exclude-module=PyQt6',
@@ -77,6 +76,10 @@ options = [
     '--hidden-import=pandas._libs.tslibs.base',
     '--hidden-import=pandas._libs.tslibs.np_datetime',
     '--hidden-import=pandas._libs.tslibs.timedeltas',
+    '--hidden-import=matplotlib',
+    '--hidden-import=matplotlib.backends.backend_tkagg',
+    '--hidden-import=matplotlib.figure',
+    '--hidden-import=matplotlib.backends.backend_pdf',
 ]
 
 # Chạy PyInstaller với các options tối ưu

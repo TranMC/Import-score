@@ -55,7 +55,7 @@ config = {
         'score': 'Điểm'          # Default score column
     },    'max_questions': 40,
     'score_per_question': 0.25,
-    'version': '1.6.0',
+    'version': '1.7.1',
     'exam_codes': ['701', '702', '703', '704'],  # Thêm danh sách mã đề
     'shortcuts': {
         'search': '<Control-f>',
@@ -68,6 +68,9 @@ config = {
         'auto_lock_timeout_minutes': 0
     },
     'changelog': {
+        '1.7.1':[
+            'Sửa lại một số lỗi trước đó'
+        ],
         '1.6.0': [
             'Thêm tính năng xuất báo cáo PDF',
             'Thêm biểu đồ phân phối điểm số',
@@ -135,6 +138,73 @@ config = {
         }
     }
 }
+
+def save_config():
+    """Lưu cấu hình ra file JSON"""
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Lỗi khi lưu cấu hình: {str(e)}")
+
+def encrypt_data(data, password):
+    """
+    Mã hóa dữ liệu sử dụng Fernet với password-based key derivation
+    
+    Args:
+        data (str): Dữ liệu cần mã hóa (thường là JSON)
+        password (str): Mật khẩu để tạo khóa
+        
+    Returns:
+        tuple: (encrypted_data, salt)
+    """
+    # Tạo salt ngẫu nhiên
+    salt = os.urandom(16)
+    
+    # Tạo key từ password và salt
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    
+    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+    
+    # Mã hóa dữ liệu
+    fernet = Fernet(key)
+    encrypted_data = fernet.encrypt(data.encode())
+    
+    return encrypted_data, salt
+
+def decrypt_data(encrypted_data, password, salt):
+    """
+    Giải mã dữ liệu đã được mã hóa bằng encrypt_data
+    
+    Args:
+        encrypted_data (bytes): Dữ liệu đã mã hóa
+        password (str): Mật khẩu dùng để tạo khóa
+        salt (bytes): Salt đã dùng khi mã hóa
+        
+    Returns:
+        str: Dữ liệu đã giải mã
+    """
+    # Tạo lại key từ password và salt
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+    )
+    
+    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+    
+    # Giải mã dữ liệu
+    fernet = Fernet(key)
+    decrypted_data = fernet.decrypt(encrypted_data).decode('utf-8')
+    
+    return decrypted_data
 
 # Biến toàn cục
 root = tk.Tk()
@@ -602,9 +672,8 @@ def select_file():
                 if config.get('memory_optimization', {}).get('auto_optimize', True):
                     df = optimize_memory_usage(df)
                 
-                # Đảm bảo có cột Mã đề nếu chưa có
-                if df is not None and 'Mã đề' not in df.columns:
-                    df['Mã đề'] = None
+                # Đảm bảo các cột cần thiết tồn tại
+                df = ensure_required_columns(df)
                 
                 # Cập nhật giao diện
                 refresh_ui()
@@ -660,50 +729,10 @@ def read_excel_normally(file_path):
             status_label.config(text="File Excel không có dữ liệu", style="StatusCritical.TLabel")
             return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
         
-        # Tìm kiếm cột tên 
-        name_column = None
-        name_variations = ['họ và tên', 'họ tên', 'tên học sinh', 'học sinh', 'tên']
+        # Đảm bảo các cột cần thiết tồn tại
+        df_result = ensure_required_columns(df_result)
         
-        for col in df_result.columns:
-            col_lower = str(col).lower()
-            if any(var in col_lower for var in name_variations):
-                name_column = col
-                break
-        
-        # Nếu không tìm thấy cột tên, thử tìm theo pattern
-        if name_column is None:
-            # Lấy ra một vài dòng đầu để kiểm tra pattern
-            sample_data = df_result.head(5).astype(str)
-            for col in df_result.columns:
-                # Kiểm tra nếu cột có chứa tên người (ít nhất 3 từ)
-                sample_values = sample_data[col].str.split().str.len()
-                if (sample_values >= 3).any():
-                    name_column = col
-                    break
-        
-        if name_column:
-            # Tiền xử lý dữ liệu
-            df_result = df_result.fillna('')
-            
-            # Đổi tên cột phù hợp với cấu hình
-            name_col_config = config['columns']['name']
-            df_result = df_result.rename(columns={name_column: name_col_config})
-        else:
-            # Nếu không tìm thấy cột tên, tạo cột tên rỗng
-            df_result[config['columns']['name']] = [f"Học sinh {i+1}" for i in range(len(df_result))]
-        
-        # Clean column names
-        df_result.columns = df_result.columns.str.strip()
-        
-        # Thêm cột Điểm nếu chưa có
-        if 'Điểm' not in df_result.columns:
-            df_result['Điểm'] = None
-            
-        # Thêm cột Mã đề nếu chưa có
-        if 'Mã đề' not in df_result.columns:
-            df_result['Mã đề'] = None
-        
-        # Đảm bảo kiểu dữ liệu phù hợp cho các cột quan trọng
+        # Đảm bảo kiểu dữ liệu phù hợp
         df_result = ensure_proper_dtypes(df_result)
         
         status_label.config(text=f"Đã đọc xong file Excel", style="StatusSuccess.TLabel")
@@ -738,7 +767,7 @@ def find_matching_column(df, target_name):
     """Find column that best matches the target name"""
     target_name = target_name.lower()
     
-    # Direct match first
+    # Direct match first (case insensitive)
     for col in df.columns:
         if col.lower() == target_name:
             return col
@@ -1031,6 +1060,11 @@ def focus_direct_score(event=None):
     """Di chuyển con trỏ đến ô nhập điểm trực tiếp"""
     entry_direct_score.focus_set()
     entry_direct_score.select_range(0, tk.END)
+
+def focus_correct_count(event=None):
+    """Di chuyển con trỏ đến ô nhập số câu đúng"""
+    entry_correct_count.focus_set()
+    entry_correct_count.select_range(0, tk.END)
 
 def customize_shortcuts():
     """Mở cửa sổ tùy chỉnh phím tắt"""
@@ -1818,6 +1852,55 @@ def verify_required_columns(dataframe):
     
     return True
 
+def ensure_required_columns(df):
+    """
+    Đảm bảo các cột cần thiết luôn tồn tại trong DataFrame
+    
+    Args:
+        df (DataFrame): DataFrame cần kiểm tra
+        
+    Returns:
+        DataFrame: DataFrame với các cột cần thiết đã thêm nếu cần
+    """
+    if df is None:
+        # Tạo DataFrame rỗng với các cột cần thiết
+        return pd.DataFrame({
+            config['columns']['name']: [],
+            'Điểm': [],
+            'Mã đề': []
+        })
+    
+    # Tạo bản sao để tránh thay đổi DataFrame gốc
+    df_copy = df.copy()
+    
+    # Đảm bảo có cột tên học sinh
+    if config['columns']['name'] not in df_copy.columns:
+        name_col = find_matching_column(df_copy, 'tên học sinh')
+        if name_col:
+            # Nếu tìm thấy cột tương tự, đổi tên nó
+            df_copy = df_copy.rename(columns={name_col: config['columns']['name']})
+        else:
+            # Nếu không, tạo mới
+            df_copy[config['columns']['name']] = ["Học sinh " + str(i+1) for i in range(len(df_copy))]
+    
+    # Đảm bảo có cột điểm
+    if 'Điểm' not in df_copy.columns:
+        score_col = find_matching_column(df_copy, 'điểm')
+        if score_col:
+            df_copy = df_copy.rename(columns={score_col: 'Điểm'})
+        else:
+            df_copy['Điểm'] = None
+    
+    # Đảm bảo có cột mã đề
+    if 'Mã đề' not in df_copy.columns:
+        exam_code_col = find_matching_column(df_copy, 'mã đề')
+        if exam_code_col:
+            df_copy = df_copy.rename(columns={exam_code_col: 'Mã đề'})
+        else:
+            df_copy['Mã đề'] = None
+        
+    return df_copy
+
 def create_ui():
     global status_label, entry_student_name, tree
     global entry_correct_count, entry_exam_code
@@ -2141,7 +2224,7 @@ Xem thêm thông tin và cập nhật mới nhất tại GitLab.
 
 def check_for_updates(show_notification=True):
     """
-    Kiểm tra phiên bản mới trên GitLab
+    Kiểm tra phiên bản mới trên GitHub
     
     Args:
         show_notification (bool): Có hiển thị thông báo khi không có phiên bản mới không
@@ -2150,14 +2233,8 @@ def check_for_updates(show_notification=True):
         bool: True nếu có phiên bản mới, False nếu không
     """
     try:
-        # URL của GitLab API để kiểm tra phiên bản mới nhất
-        # Thay đổi URL này theo repository thực tế của bạn
-        gitlab_api_url = "https://gitlab.com/api/v4/TranMC/import-student-score"
-        
-        # Thêm header nếu cần
-        headers = {}
-        # Nếu cần token để truy cập private repository
-        # headers = {"PRIVATE-TOKEN": "your_access_token"}
+        # URL của GitHub API để kiểm tra phiên bản mới nhất
+        github_api_url = "https://api.github.com/repos/TranMC/Import-score/releases/latest"
         
         # Hiển thị thông báo đang kiểm tra
         if show_notification:
@@ -2165,63 +2242,59 @@ def check_for_updates(show_notification=True):
             root.update()
         
         # Gọi API để lấy thông tin phiên bản mới nhất
-        response = requests.get(gitlab_api_url, headers=headers, timeout=5)
+        response = requests.get(github_api_url, timeout=5)
         
         # Kiểm tra kết quả
         if response.status_code == 200:
-            releases = response.json()
+            release_info = response.json()
             
-            if releases:
-                # Lấy phiên bản mới nhất
-                latest_release = releases[0]
-                latest_version = latest_release.get('tag_name', '').lstrip('v')
-                current_version = config.get('version', '0.0.0')
-                
-                # So sánh phiên bản
-                if latest_version > current_version:
-                    # Hiển thị thông báo có phiên bản mới
-                    if show_notification:
-                        release_notes = latest_release.get('description', 'Không có thông tin chi tiết.')
-                        result = messagebox.askyesno(
-                            "Có phiên bản mới",
-                            f"Đã phát hiện phiên bản mới: {latest_version}\n"
-                            f"Phiên bản hiện tại: {current_version}\n\n"
-                            f"Tính năng mới:\n{release_notes[:200]}{'...' if len(release_notes) > 200 else ''}\n\n"
-                            "Bạn có muốn tải phiên bản mới không?"
-                        )
-                        
-                        if result:
-                            # Mở trang download
-                            download_url = latest_release.get('assets', {}).get('links', [{}])[0].get('url', '')
-                            if download_url:
-                                import webbrowser
-                                webbrowser.open(download_url)
-                            else:
-                                webbrowser.open(f"https://gitlab.com/TranMC/Import-score/-/releases")
+            # Lấy phiên bản mới nhất
+            latest_version = release_info.get('tag_name', '').lstrip('v')
+            current_version = config.get('version', '0.0.0')
+            
+            # So sánh phiên bản
+            if latest_version > current_version:
+                # Hiển thị thông báo có phiên bản mới
+                if show_notification:
+                    release_notes = release_info.get('body', 'Không có thông tin chi tiết.')
+                    result = messagebox.askyesno(
+                        "Có phiên bản mới",
+                        f"Đã phát hiện phiên bản mới: {latest_version}\n"
+                        f"Phiên bản hiện tại: {current_version}\n\n"
+                        f"Tính năng mới:\n{release_notes[:200]}{'...' if len(release_notes) > 200 else ''}\n\n"
+                        "Bạn có muốn tải phiên bản mới không?"
+                    )
                     
-                    if 'file_path' in globals() and file_path:
-                        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                    return True
-                else:
-                    # Không có phiên bản mới
-                    if show_notification:
-                        if 'file_path' in globals() and file_path:
-                            status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                        messagebox.showinfo("Cập nhật", f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
-                    return False
+                    if result:
+                        # Mở trang download
+                        download_url = ""
+                        for asset in release_info.get('assets', []):
+                            if asset.get('name', '').endswith('.exe'):
+                                download_url = asset.get('browser_download_url', '')
+                                break
+                                
+                        if download_url:
+                            import webbrowser
+                            webbrowser.open(download_url)
+                        else:
+                            webbrowser.open(release_info.get('html_url', ''))
+                
+                if 'file_path' in globals() and file_path:
+                    status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
+                return True
             else:
-                # Không tìm thấy releases
+                # Không có phiên bản mới
                 if show_notification:
                     if 'file_path' in globals() and file_path:
                         status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                    messagebox.showinfo("Thông báo", "Không tìm thấy thông tin phiên bản.")
+                    messagebox.showinfo("Cập nhật", f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
                 return False
         else:
             # Lỗi kết nối
             if show_notification:
                 if 'file_path' in globals() and file_path:
                     status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                messagebox.showwarning("Lỗi kết nối", f"Không thể kết nối đến máy chủ GitLab. Mã lỗi: {response.status_code}")
+                messagebox.showwarning("Lỗi kết nối", f"Không thể kết nối đến máy chủ GitHub. Mã lỗi: {response.status_code}")
             return False
     
     except requests.RequestException as e:
@@ -2299,6 +2372,220 @@ def update_score_extremes():
 
 def delayed_search(event=None):
     """Tìm kiếm sau một khoảng thời gian để tránh quá nhiều tìm kiếm liên tiếp"""
+    global search_timer_id
+    
+    # Hủy timer cũ nếu có
+    if search_timer_id is not None:
+        root.after_cancel(search_timer_id)
+    
+    # Thiết lập timer mới
+    search_timer_id = root.after(300, search_student)  # 300ms delay
+
+def generate_report():
+    """Tạo báo cáo PDF với thống kê và biểu đồ phân phối điểm"""
+    global df
+    
+    if df is None or df.empty:
+        messagebox.showwarning("Warning", "No data available for report generation")
+        return
+        
+    if 'Điểm' not in df.columns:
+        messagebox.showwarning("Warning", "Score column not found in data")
+        return
+        
+    # Lọc chỉ lấy học sinh có điểm
+    scores_df = df[df['Điểm'].notna()].copy()
+    
+    if len(scores_df) == 0:
+        messagebox.showwarning("Warning", "No students with scores found")
+        return
+    
+    try:
+        # Hỏi nơi lưu file báo cáo
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            title="Save PDF Report"
+        )
+        
+        if not file_path:
+            return  # Người dùng hủy
+            
+        # Hiển thị thông báo đang tạo báo cáo
+        status_label.config(text="Creating PDF report...", style="StatusWarning.TLabel")
+        root.update()
+        
+        # Tạo tệp PDF
+        with PdfPages(file_path) as pdf:
+            # Trang 1: Thông tin chung
+            plt.figure(figsize=(10, 12))
+            plt.axis('off')
+            
+            # Tiêu đề báo cáo
+            title_text = f"SCORE STATISTICS REPORT"
+            subtitle_text = f"Created: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            
+            plt.text(0.5, 0.98, title_text, fontsize=16, ha='center', va='top', fontweight='bold')
+            plt.text(0.5, 0.95, subtitle_text, fontsize=12, ha='center', va='top')
+            
+            # Thông tin cơ bản
+            info_text = [
+                f"Total students: {len(df)}",
+                f"Students with scores: {len(scores_df)} ({len(scores_df)/len(df):.1%})",
+                f"Average score: {scores_df['Điểm'].mean():.2f}",
+                f"Highest score: {scores_df['Điểm'].max():.2f}",
+                f"Lowest score: {scores_df['Điểm'].min():.2f}",
+                f"Standard deviation: {scores_df['Điểm'].std():.2f}"
+            ]
+            
+            plt.text(0.1, 0.9, "Overview:", fontsize=14, va='top', fontweight='bold')
+            y_pos = 0.85
+            for info in info_text:
+                plt.text(0.1, y_pos, info, fontsize=12, va='top')
+                y_pos -= 0.03
+            
+            # Biểu đồ phân phối điểm
+            ax1 = plt.axes([0.1, 0.45, 0.8, 0.3])
+            scores_df['Điểm'].hist(ax=ax1, bins=10, alpha=0.7, color='blue', edgecolor='black')
+            ax1.set_title('Score Distribution')
+            ax1.set_xlabel('Score')
+            ax1.set_ylabel('Number of Students')
+            ax1.grid(True, alpha=0.3)
+            
+            # Thêm đường trung bình
+            mean_score = scores_df['Điểm'].mean()
+            ax1.axvline(mean_score, color='red', linestyle='dashed', linewidth=1)
+            ax1.text(mean_score + 0.1, ax1.get_ylim()[1]*0.9, f'Avg: {mean_score:.2f}', color='red')
+            
+            # Biểu đồ tròn tỷ lệ đạt/không đạt
+            ax2 = plt.axes([0.1, 0.1, 0.35, 0.25])
+            pass_threshold = 5.0
+            passed = (scores_df['Điểm'] >= pass_threshold).sum()
+            failed = len(scores_df) - passed
+            
+            labels = ['Pass (≥ 5.0)', 'Fail (< 5.0)']
+            sizes = [passed, failed]
+            colors = ['#66b3ff', '#ff9999']
+            
+            ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+            ax2.axis('equal')
+            ax2.set_title('Pass/Fail Ratio')
+            
+            # Bảng học sinh điểm cao nhất
+            ax3 = plt.axes([0.55, 0.05, 0.35, 0.3])
+            ax3.axis('tight')
+            ax3.axis('off')
+            
+            # Lấy 5 học sinh có điểm cao nhất
+            name_col = config['columns']['name']
+            top_students = scores_df.sort_values('Điểm', ascending=False).head(5)
+            top_data = [[student, score] for student, score in 
+                       zip(top_students[name_col], top_students['Điểm'])]
+            
+            top_table = ax3.table(cellText=top_data, colLabels=[name_col, 'Score'],
+                              loc='center', cellLoc='center')
+            top_table.auto_set_font_size(False)
+            top_table.set_fontsize(10)
+            top_table.scale(1, 1.5)
+            
+            ax3.set_title('Top Students')
+            
+            pdf.savefig()
+            plt.close()
+            
+            # Trang 2: Danh sách điểm
+            plt.figure(figsize=(10, 12))
+            plt.axis('off')
+            
+            plt.text(0.5, 0.98, "STUDENT SCORE LIST", fontsize=16, ha='center', fontweight='bold')
+            
+            # Vẽ bảng điểm
+            ax = plt.axes([0.05, 0.05, 0.9, 0.85])
+            ax.axis('tight')
+            ax.axis('off')
+            
+            # Số học sinh tối đa hiển thị trên một trang
+            page_size = 40
+            name_col = config['columns']['name']
+            exam_code_col = 'Mã đề' if 'Mã đề' in scores_df.columns else None
+            
+            # Nếu có mã đề thì hiển thị
+            if exam_code_col:
+                sorted_df = scores_df.sort_values(name_col)
+                table_data = [[student, exam_code, score] for student, exam_code, score in 
+                             zip(sorted_df[name_col][:page_size], 
+                                 sorted_df[exam_code_col][:page_size], 
+                                 sorted_df['Điểm'][:page_size])]
+                col_labels = [name_col, exam_code_col, 'Score']
+            else:
+                sorted_df = scores_df.sort_values(name_col)
+                table_data = [[student, score] for student, score in 
+                             zip(sorted_df[name_col][:page_size], 
+                                 sorted_df['Điểm'][:page_size])]
+                col_labels = [name_col, 'Score']
+            
+            table = ax.table(cellText=table_data, colLabels=col_labels,
+                          loc='center', cellLoc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1, 1.2)
+            
+            pdf.savefig()
+            plt.close()
+            
+            # Tạo thêm trang nếu số học sinh > page_size
+            if len(scores_df) > page_size:
+                pages_needed = (len(scores_df) - 1) // page_size + 1
+                for page in range(1, pages_needed):
+                    plt.figure(figsize=(10, 12))
+                    plt.axis('off')
+                    
+                    plt.text(0.5, 0.98, f"STUDENT SCORE LIST (page {page+1}/{pages_needed})", 
+                          fontsize=16, ha='center', fontweight='bold')
+                    
+                    ax = plt.axes([0.05, 0.05, 0.9, 0.85])
+                    ax.axis('tight')
+                    ax.axis('off')
+                    
+                    start_idx = page * page_size
+                    end_idx = min((page + 1) * page_size, len(scores_df))
+                    
+                    if exam_code_col:
+                        table_data = [[student, exam_code, score] for student, exam_code, score in 
+                                     zip(sorted_df[name_col][start_idx:end_idx], 
+                                         sorted_df[exam_code_col][start_idx:end_idx], 
+                                         sorted_df['Điểm'][start_idx:end_idx])]
+                    else:
+                        table_data = [[student, score] for student, score in 
+                                     zip(sorted_df[name_col][start_idx:end_idx], 
+                                         sorted_df['Điểm'][start_idx:end_idx])]
+                    
+                    table = ax.table(cellText=table_data, colLabels=col_labels,
+                                  loc='center', cellLoc='center')
+                    table.auto_set_font_size(False)
+                    table.set_fontsize(9)
+                    table.scale(1, 1.2)
+                    
+                    pdf.savefig()
+                    plt.close()
+        
+        status_label.config(text=f"PDF report created: {os.path.basename(file_path)}", 
+                          style="StatusSuccess.TLabel")
+        messagebox.showinfo("Success", f"PDF report created at:\n{file_path}")
+        
+    except Exception as e:
+        status_label.config(text=f"Error creating report: {str(e)}", 
+                          style="StatusCritical.TLabel")
+        messagebox.showerror("Error", f"Cannot create PDF report: {str(e)}")
+        traceback.print_exc()
+
+def show_score_distribution():
+    """Hiển thị biểu đồ phân phối điểm số"""
+    global df
+    if df is None or df.empty:
+        messagebox.showinfo("Thông báo", "Không có dữ liệu để hiển thị thống kê")
+        return
+        
     if 'Điểm' not in df.columns:
         messagebox.showinfo("Thông báo", "Không có cột điểm trong dữ liệu")
         return
@@ -2316,6 +2603,7 @@ def delayed_search(event=None):
         chart_window.title("Biểu đồ phân phối điểm số")
         chart_window.geometry("800x600")
         chart_window.transient(root)
+        
         
         # Tạo frame chứa biểu đồ
         chart_frame = ttk.Frame(chart_window)
@@ -2403,7 +2691,12 @@ def delayed_search(event=None):
     except Exception as e:
         messagebox.showerror("Lỗi", f"Không thể hiển thị biểu đồ: {str(e)}")
         traceback.print_exc()
-    
+
+def focus_correct_count(event=None):
+    """Di chuyển con trỏ đến ô nhập số câu đúng"""
+    entry_correct_count.focus_set()
+    entry_correct_count.select_range(0, tk.END)
+
 # Khởi tạo giao diện
 create_ui()
 
