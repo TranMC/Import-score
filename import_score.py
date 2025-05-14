@@ -18,6 +18,12 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import threading
 import requests
 
+# Import các module mới
+import version_utils
+import themes
+import ui_utils
+from check_for_updates import check_for_updates, check_updates_async
+
 # Tạo class ToolTip để hiển thị gợi ý khi di chuột qua các nút
 class ToolTip:
     def __init__(self, widget, text):
@@ -47,101 +53,65 @@ class ToolTip:
             self.tooltip.destroy()
             self.tooltip = None
 
-# Cấu hình cơ bản
-config = {
-    'columns': {
-        'name': 'Tên Học Sinh',  # Default column name
-        'exam_code': 'Mã Đề',    # Default exam code column 
-        'score': 'Điểm'          # Default score column
-    },    'max_questions': 40,
-    'score_per_question': 0.25,
-    'version': '1.8.2',
-    'exam_codes': ['701', '702', '703', '704'],  # Thêm danh sách mã đề
-    'shortcuts': {
-        'search': '<Control-f>',
-        'direct_score': '<Control-g>',
-        'undo': '<Control-z>'    },
-    'security': {
-        'encrypt_backups': False,
-        'encrypt_sensitive_data': False,
-        'password_protect_app': False,
-        'auto_lock_timeout_minutes': 0
-    },
-    'changelog': {
-        '1.8.2':[
-            'Sửa lại một số lỗi liên quan đến pandas mới',
-            'Sửa lại một số lỗi liên quan đến matplotlib mới'
-        ],
-        '1.7.1':[
-            'Sửa lại một số lỗi trước đó'
-        ],
-        '1.6.0': [
-            'Thêm tính năng xuất báo cáo PDF',
-            'Thêm biểu đồ phân phối điểm số',
-            'Thêm thống kê tỷ lệ đạt/không đạt',
-            'Cải thiện giao diện thống kê',
-            'Sửa các lỗi liên quan đến pandas mới'
-        ],
-        '1.5.5': [
-            'Thêm tính năng hiển thị điểm cao nhất và thấp nhất',
-            'Tự động chọn học sinh khi chỉ có một kết quả tìm kiếm',
-            'Cải thiện trải nghiệm tìm kiếm với delay thông minh',
-            'Thêm thống kê số học sinh có điểm/tổng số học sinh'
-        ],
-        '1.5.4': [
-            'Thêm tính năng hoàn tác (Ctrl+Z)',
-            'Thêm tính năng tùy chỉnh phím tắt',
-            'Thêm tính năng tùy chỉnh mã đề',
-            'Cải thiện UX cho tìm kiếm học sinh',
-            'Thêm tính năng lưu cấu hình',
-            'Chỉnh lại vài lỗi đã biết (không tự động tìm kiếm, lỗi khi đổi mục tìm)'
-        ],
-        '1.4.0': [
-            'Cải thiện giao diện người dùng',
-            'Thêm cấu hình số câu hỏi và điểm mỗi câu',
-            'Tối ưu hóa kích thước cửa sổ',
-            'Thêm danh sách mã đề có sẵn',
-            'Tự động lưu sau mỗi thay đổi'
-        ],
-        '1.3.0': [
-            'Thêm tính năng hoàn tác (Ctrl+Z)',
-            'Cải thiện hiệu suất tìm kiếm',
-            'Sửa lỗi nhập điểm'
-        ],
-        '1.2.0': [
-            'Thêm tính năng import từ Excel khác',
-            'Cải thiện hiển thị danh sách học sinh',
-            'Thêm validation dữ liệu nhập vào'
-        ],
-        '1.1.0': [
-            'Thêm tính năng tìm kiếm học sinh',
-            'Thêm tính năng tự động tính điểm',
-            'Cải thiện UI/UX'
-        ],
-        '1.0.0': [
-            'Phát hành phiên bản đầu tiên',
-            'Tính năng cơ bản: nhập điểm, quản lý học sinh',
-            'Lưu trữ dữ liệu bằng Excel'
-        ]
-    },
-    'ui': {
-        'font_family': 'Segoe UI',  # Font chữ phổ biến, dễ đọc
-        'font_size': {
-            'normal': 11,           # Cỡ chữ thường
-            'heading': 12,          # Cỡ chữ tiêu đề
-            'button': 11           # Cỡ chữ nút
-        },
-        'padding': {
-            'frame': 10,           # Padding cho frame
-            'widget': 5            # Padding cho widget
-        },
-        'min_width': {
-            'button': 120,         # Độ rộng tối thiểu cho nút
-            'entry': 150,          # Độ rộng tối thiểu cho ô nhập
-            'combobox': 100        # Độ rộng tối thiểu cho combobox
+# Cấu hình cơ bản - tải từ file thay vì hardcode
+def load_config():
+    """Tải cấu hình từ file JSON"""
+    try:
+        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Lỗi khi đọc cấu hình: {str(e)}")
+        # Trả về cấu hình mặc định
+        return {
+            'columns': {
+                'name': 'Tên Học Sinh',
+                'exam_code': 'Mã Đề',
+                'score': 'Điểm'
+            },
+            'max_questions': 40,
+            'score_per_question': 0.25,
+            'exam_codes': ['701', '702', '703', '704'],
+            'shortcuts': {
+                'search': '<Control-f>',
+                'direct_score': '<Control-g>',
+                'undo': '<Control-z>'
+            },
+            'security': {
+                'encrypt_backups': False,
+                'encrypt_sensitive_data': False,
+                'password_protect_app': False,
+                'auto_lock_timeout_minutes': 0
+            },
+            'ui': {
+                'font_family': 'Segoe UI',
+                'font_size': {
+                    'normal': 11,
+                    'heading': 12,
+                    'button': 11
+                },
+                'padding': {
+                    'frame': 10,
+                    'widget': 5
+                },
+                'min_width': {
+                    'button': 120,
+                    'entry': 150,
+                    'combobox': 100
+                },
+                'theme': themes.LIGHT_THEME,
+                'rounded_corners': 4,
+                'dark_mode': False,
+                'responsive': {
+                    'initial_width': 900,
+                    'initial_height': 650,
+                    'min_width': 800,
+                    'min_height': 600
+                }
+            }
         }
-    }
-}
+
+config = load_config()
 
 def save_config():
     """Lưu cấu hình ra file JSON"""
@@ -1910,41 +1880,39 @@ def create_ui():
     global entry_correct_count, entry_exam_code
     global entry_max_questions
     global score_info_label, entry_direct_score, stats_label
-    global highest_score_label, lowest_score_label  # Thêm biến cho điểm cao/thấp    # Tạo style cho các widget
+    global highest_score_label, lowest_score_label  # Thêm biến cho điểm cao/thấp    
+    
+    # Khởi tạo style
     style = ttk.Style()
-    default_font = (config['ui']['font_family'], config['ui']['font_size']['normal'])
-    heading_font = (config['ui']['font_family'], config['ui']['font_size']['heading'])
-    button_font = (config['ui']['font_family'], config['ui']['font_size']['button'])
     
-    style.configure('TLabel', font=default_font)
-    style.configure('TButton', font=button_font)
-    style.configure('TEntry', font=default_font)
-    style.configure('Heading.TLabel', font=heading_font)
-    style.configure('Treeview', font=default_font, rowheight=25)
-    style.configure('Treeview.Heading', font=heading_font)
+    # Áp dụng style theo cấu hình
+    style = ui_utils.apply_styles(config, style, root)
     
-    # Định nghĩa thêm các styles mới
-    style.configure('Status.TLabel', font=default_font, background="#f0f0f0")
-    style.configure('StatusGood.TLabel', font=default_font, foreground='green')
-    style.configure('StatusWarning.TLabel', font=default_font, foreground='orange')
-    style.configure('StatusError.TLabel', font=default_font, foreground='red')
+    # Thiết lập responsive cho cửa sổ
+    ui_utils.init_responsive_settings(root, config)
     
     # File Frame với layout cải tiến
     file_frame = ttk.LabelFrame(root, text="Quản lý File", padding=config['ui']['padding']['frame'])
     file_frame.pack(fill="x", padx=10, pady=5)
-      # Tạo frame con để chứa status và thông tin phiên bản
+    
+    # Tạo frame con để chứa status và thông tin phiên bản
     status_frame = ttk.Frame(file_frame)
     status_frame.pack(fill="x", pady=config['ui']['padding']['widget'])
     
+    # Thêm dark mode switch
+    dark_mode_frame = ui_utils.create_dark_mode_switch(status_frame, config, style, root, save_config)
+    dark_mode_frame.pack(side="right")
+    
     status_label = ttk.Label(status_frame, text="Chưa tải file Excel", 
-                          style="StatusError.TLabel")
+                          style="StatusWarning.TLabel")
     status_label.pack(side="left", pady=config['ui']['padding']['widget'])
     
     # Thêm thông tin phiên bản vào cùng dòng với status
-    version_info = ttk.Label(status_frame, text=f"v{config['version']}", 
+    version_display = version_utils.get_version_display()
+    version_info = ttk.Label(status_frame, text=version_display, 
                            font=(config['ui']['font_family'], 9),
-                           foreground="gray")
-    version_info.pack(side="right", pady=config['ui']['padding']['widget'])
+                           foreground=config['ui']['theme']['text_secondary'])
+    version_info.pack(side="right", pady=config['ui']['padding']['widget'], padx=5)
     
     # Thêm frame chứa các nút để căn chỉnh tốt hơn
     buttons_frame = ttk.Frame(file_frame)
@@ -1958,7 +1926,7 @@ def create_ui():
     ToolTip(open_button, "Mở file Excel chứa danh sách học sinh và điểm số")
 
     # Nút sao lưu dữ liệu với tooltip
-    backup_button = ttk.Button(buttons_frame, text="Sao lưu dữ liệu", 
+    backup_button = ttk.Button(buttons_frame, text="Sao lưu", 
                              command=backup_data,
                              width=config['ui']['min_width']['button'])
     backup_button.pack(side="left", padx=config['ui']['padding']['widget'])
@@ -1970,7 +1938,8 @@ def create_ui():
                               width=config['ui']['min_width']['button'])
     restore_button.pack(side="left", padx=config['ui']['padding']['widget'])
     ToolTip(restore_button, "Khôi phục dữ liệu từ một bản sao lưu trước đó")
-      # Nút xuất báo cáo vào file frame
+    
+    # Nút xuất báo cáo vào file frame
     report_button = ttk.Button(buttons_frame, text="Xuất báo cáo PDF", 
                              command=generate_report,
                              width=config['ui']['min_width']['button'])
@@ -2003,10 +1972,10 @@ def create_ui():
 
     # Thêm nút kiểm tra cập nhật
     update_button = ttk.Button(buttons_frame, text="Kiểm tra cập nhật", 
-                             command=lambda: check_for_updates(True),
+                             command=lambda: check_for_updates_wrapper(True),
                              width=config['ui']['min_width']['button'])
     update_button.pack(side="left", padx=config['ui']['padding']['widget'])
-    ToolTip(update_button, "Kiểm tra phiên bản mới trên GitLab")
+    ToolTip(update_button, "Kiểm tra phiên bản mới trên GitHub")
 
     # Config Frame
     config_frame = ttk.LabelFrame(root, text="Cấu hình tính điểm", 
@@ -2015,15 +1984,15 @@ def create_ui():
 
     # Số câu hỏi
     ttk.Label(config_frame, text="Số câu hỏi:", 
-             font=default_font).pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_max_questions = ttk.Entry(config_frame, width=10, font=default_font)
+             font=(config['ui']['font_family'], config['ui']['font_size']['normal'])).pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_max_questions = ttk.Entry(config_frame, width=10, font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
     entry_max_questions.insert(0, str(config['max_questions']))
     entry_max_questions.pack(side="left", padx=config['ui']['padding']['widget'])
     
     # Thêm chú thích về cách tính điểm
     ttk.Label(config_frame, text="(Điểm mỗi câu = 10/tổng số câu)", 
              font=(config['ui']['font_family'], 9),
-             foreground="gray").pack(side="left", padx=5)
+             foreground=config['ui']['theme']['text_secondary']).pack(side="left", padx=5)
 
     ttk.Button(config_frame, text="Cập nhật", 
               command=update_config,
@@ -2031,7 +2000,7 @@ def create_ui():
 
     score_info_label = ttk.Label(config_frame, 
         text=f"(Mỗi câu = {config['score_per_question']} điểm, tối đa {config['max_questions']} câu, tổng điểm = 10)",
-        font=default_font)
+        font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
     score_info_label.pack(side="left", padx=20)
 
     # Search Frame
@@ -2044,34 +2013,99 @@ def create_ui():
     search_input_frame.pack(side="left", padx=config['ui']['padding']['widget'])
 
     ttk.Label(search_input_frame, text="Tên học sinh:", 
-             font=default_font).pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_student_name = ttk.Entry(search_input_frame, width=30, font=default_font)
+             font=(config['ui']['font_family'], config['ui']['font_size']['normal'])).pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_student_name = ttk.Entry(search_input_frame, width=30, font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
     entry_student_name.pack(side="left", padx=config['ui']['padding']['widget'])
     # Thêm sự kiện <KeyRelease> cho ô nhập
     entry_student_name.bind("<KeyRelease>", delayed_search)  
     ttk.Label(search_input_frame, text="(Ctrl+F để tìm nhanh)", 
              font=(config['ui']['font_family'], 9),
-             foreground="gray").pack(side="left", padx=5)
+             foreground=config['ui']['theme']['text_secondary']).pack(side="left", padx=5)
 
     ttk.Button(search_frame, text="Thêm học sinh", 
               command=add_student,
               width=15).pack(side="left", padx=config['ui']['padding']['widget'])
 
-    # Thêm frame thống kê riêng
+    # Thêm frame thống kê riêng với thiết kế hiện đại
     stats_frame = ttk.LabelFrame(root, text="Thống kê lớp học", padding=config['ui']['padding']['frame'])
     stats_frame.pack(fill="x", padx=10, pady=5)
 
+    # Tạo frame con với nền màu card
+    stats_content_frame = ttk.Frame(stats_frame, style='Card.TFrame')
+    stats_content_frame.pack(fill="x", pady=5)
+
     # Tạo grid layout cho các thông tin
-    stats_label = ttk.Label(stats_frame, text="0/0 học sinh có điểm", font=default_font)
-    stats_label.grid(row=0, column=0, padx=20, sticky="w")
+    stats_label = ttk.Label(stats_content_frame, text="0/0 học sinh có điểm", 
+                          font=(config['ui']['font_family'], config['ui']['font_size']['normal']),
+                          background=config['ui']['theme']['card'])
+    stats_label.grid(row=0, column=0, padx=20, pady=10, sticky="w")
 
-    highest_score_label = ttk.Label(stats_frame, text="Cao nhất: N/A", font=default_font)
-    highest_score_label.grid(row=0, column=1, padx=20, sticky="w")
+    highest_score_label = ttk.Label(stats_content_frame, text="Cao nhất: N/A", 
+                                  font=(config['ui']['font_family'], config['ui']['font_size']['normal']),
+                                  background=config['ui']['theme']['card'])
+    highest_score_label.grid(row=0, column=1, padx=20, pady=10, sticky="w")
 
-    lowest_score_label = ttk.Label(stats_frame, text="Thấp nhất: N/A", font=default_font)
-    lowest_score_label.grid(row=0, column=2, padx=20, sticky="w")
+    lowest_score_label = ttk.Label(stats_content_frame, text="Thấp nhất: N/A", 
+                                 font=(config['ui']['font_family'], config['ui']['font_size']['normal']),
+                                 background=config['ui']['theme']['card'])
+    lowest_score_label.grid(row=0, column=2, padx=20, pady=10, sticky="w")
 
-    # Result Frame với Treeview
+    # Score Frame - Nhập Điểm (đặt trước result_frame để hiển thị trên cùng)
+    score_frame = ttk.LabelFrame(root, text="Nhập điểm", 
+                               padding=config['ui']['padding']['frame'])
+    score_frame.pack(fill="x", padx=10, pady=5)  # Thêm lệnh pack ở đây
+
+    # Mã đề với chú thích - đặt trong một frame riêng
+    ma_de_frame = ttk.LabelFrame(score_frame, text="Nhập mã đề")
+    ma_de_frame.pack(side="left", padx=10, fill="y")
+    
+    ttk.Label(ma_de_frame, text="Mã đề:", 
+             font=(config['ui']['font_family'], config['ui']['font_size']['normal'])).pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_exam_code = ttk.Combobox(ma_de_frame, 
+                                 width=10, 
+                                 values=config['exam_codes'],
+                                 font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
+    entry_exam_code.pack(side="left", padx=config['ui']['padding']['widget'])
+    ttk.Label(ma_de_frame, text="(nhập x để xóa)", 
+             font=(config['ui']['font_family'], 9),
+             foreground=config['ui']['theme']['text_secondary']).pack(side="left")
+
+    # Frame cho nhập điểm qua số câu đúng - tối ưu hiển thị
+    correct_frame = ttk.LabelFrame(score_frame, text="Nhập số câu đúng")
+    correct_frame.pack(side="left", padx=10, fill="y")
+
+    ttk.Label(correct_frame, text="Số câu đúng:", 
+            font=(config['ui']['font_family'], config['ui']['font_size']['normal'])).pack(
+        side="left", padx=config['ui']['padding']['widget'])
+    entry_correct_count = ttk.Entry(correct_frame, width=10, 
+                                  font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
+    entry_correct_count.pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_correct_count.bind("<Return>", calculate_score)
+    
+    # Thêm thông báo phím tắt
+    ttk.Label(correct_frame, text="(Ctrl+D)", 
+            font=(config['ui']['font_family'], 9),
+            foreground=config['ui']['theme']['text_secondary']).pack(side="left", padx=5)
+
+    ttk.Button(correct_frame, text="Tính điểm", 
+              command=calculate_score,
+              width=15).pack(side="left", padx=config['ui']['padding']['widget'])
+
+    # Frame cho nhập điểm trực tiếp với chú thích - tối ưu hiển thị
+    direct_frame = ttk.LabelFrame(score_frame, text="Nhập điểm trực tiếp")
+    direct_frame.pack(side="left", padx=10, fill="y")
+
+    ttk.Label(direct_frame, text="Điểm số:", 
+             font=(config['ui']['font_family'], config['ui']['font_size']['normal'])).pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_direct_score = ttk.Entry(direct_frame, width=10, 
+                               font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
+    entry_direct_score.pack(side="left", padx=config['ui']['padding']['widget'])
+    entry_direct_score.bind("<Return>", calculate_score_direct)
+    ttk.Label(direct_frame, text="(Ctrl+G)", 
+             font=(config['ui']['font_family'], 9),
+             foreground=config['ui']['theme']['text_secondary']).pack(side="left")
+
+    # Result Frame với Treeview (đặt sau score_frame)
     result_frame = ttk.LabelFrame(root, text="Danh sách học sinh", 
                                 padding=config['ui']['padding']['frame'])
     result_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -2085,114 +2119,117 @@ def create_ui():
     tree.heading('exam_code', text=config['columns']['exam_code'])
     tree.heading('score', text=config['columns']['score'])
     
-    tree.column('name', width=350)  # Giảm độ rộng cột tên
-    tree.column('exam_code', width=100, anchor='center')
-    tree.column('score', width=100, anchor='center')
+    # Điều chỉnh độ rộng cột để tốt hơn khi thu nhỏ màn hình
+    tree.column('name', width=350, minwidth=150)  # Đảm bảo độ rộng tối thiểu phù hợp
+    tree.column('exam_code', width=100, minwidth=60, anchor='center')
+    tree.column('score', width=100, minwidth=60, anchor='center')
+    
+    # Thêm tag cho việc tạo sọc hàng
+    tree.tag_configure('even_row', background='#f5f5f5')
+    tree.tag_configure('odd_row', background='white')
 
     vsb = ttk.Scrollbar(result_frame, orient="vertical", command=tree.yview)
     hsb = ttk.Scrollbar(result_frame, orient="horizontal", command=tree.xview)
     tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
     
+    # Đảm bảo tree chiếm phần lớn không gian và mở rộng đúng cách
     tree.grid(column=0, row=0, sticky='nsew')
     vsb.grid(column=1, row=0, sticky='ns')
     hsb.grid(column=0, row=1, sticky='ew')
     
+    # Đảm bảo result_frame mở rộng đúng cách
     result_frame.grid_columnconfigure(0, weight=1)
     result_frame.grid_rowconfigure(0, weight=1)
 
-    # Score Frame
-    score_frame = ttk.LabelFrame(root, text="Nhập điểm", 
-                               padding=config['ui']['padding']['frame'])
-    score_frame.pack(fill="x", padx=10, pady=5)
-
-    # Mã đề với chú thích
-    ma_de_frame = ttk.Frame(score_frame)
-    ma_de_frame.pack(side="left", padx=config['ui']['padding']['widget'])
-    
-    ttk.Label(ma_de_frame, text="Mã đề:", 
-             font=default_font).pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_exam_code = ttk.Combobox(ma_de_frame, 
-                                 width=10, 
-                                 values=config['exam_codes'],
-                                 font=default_font)
-    entry_exam_code.pack(side="left", padx=config['ui']['padding']['widget'])
-    ttk.Label(ma_de_frame, text="(nhập x để xóa)", 
-             font=(config['ui']['font_family'], 9),
-             foreground="gray").pack(side="left")
-
-    # Frame cho nhập điểm qua số câu đúng
-    correct_frame = ttk.LabelFrame(score_frame, text="Nhập số câu đúng")
-    correct_frame.pack(side="left", padx=10)
-
-    ttk.Label(correct_frame, text="Số câu đúng:", font=default_font).pack(
-        side="left", padx=config['ui']['padding']['widget'])
-    entry_correct_count = ttk.Entry(correct_frame, width=10, font=default_font)
-    entry_correct_count.pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_correct_count.bind("<Return>", calculate_score)
-    # Thêm thông báo phím tắt
-    ttk.Label(correct_frame, text="(Ctrl+D)", font=(config['ui']['font_family'], 9),
-            foreground="gray").pack(side="left", padx=5)
-
-
-    ttk.Button(correct_frame, text="Tính điểm", 
-              command=calculate_score,
-              width=15).pack(side="left", padx=config['ui']['padding']['widget'])
-
-    # Frame cho nhập điểm trực tiếp với chú thích
-    direct_frame = ttk.LabelFrame(score_frame, text="Nhập điểm trực tiếp")
-    direct_frame.pack(side="left", padx=10)
-
-    ttk.Label(direct_frame, text="Điểm số:", 
-             font=default_font).pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_direct_score = ttk.Entry(direct_frame, width=10, font=default_font)
-    entry_direct_score.pack(side="left", padx=config['ui']['padding']['widget'])
-    entry_direct_score.bind("<Return>", calculate_score_direct)
-    ttk.Label(direct_frame, text="(Ctrl+G)", 
-             font=(config['ui']['font_family'], 9),
-             foreground="gray").pack(side="left")
-
-    # Điều chỉnh padding và khoảng cách
-    for frame in [file_frame, config_frame, search_frame, stats_frame, result_frame, score_frame]:
-        frame.pack(fill="x", padx=5, pady=2)  # Giảm padding
-
-    # Status bar với version
-    status_frame = ttk.Frame(root)
-    status_frame.pack(side='bottom', fill='x')
-    
-    # Version label
-    version_label = ttk.Label(status_frame, 
-                            text=f"v{config['version']}", 
-                            anchor='e')
-    version_label.pack(side='right', padx=5, pady=2)
-
-    # Thêm menu
+    # Tạo menu
     menubar = tk.Menu(root)
     root.config(menu=menubar)
     
+    # Menu Cài đặt
     settings_menu = tk.Menu(menubar, tearoff=0)
     menubar.add_cascade(label="Cài đặt", menu=settings_menu)
     settings_menu.add_command(label="Tùy chỉnh phím tắt", command=customize_shortcuts)
     settings_menu.add_command(label="Tùy chỉnh mã đề", command=customize_exam_codes)
-    settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)  # Add new menu item
-    settings_menu.add_command(label="Tùy chỉnh bảo mật", command=customize_security)  # Add new menu item
+    settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)
+    settings_menu.add_command(label="Bảo mật", command=customize_security)
     settings_menu.add_separator()
-    settings_menu.add_command(label="Kiểm tra cập nhật", command=lambda: check_for_updates(True))
-    settings_menu.add_command(label="About", command=show_about)
+    settings_menu.add_command(label="Chế độ tối/sáng", command=lambda: toggle_theme(style))
     
-    report_menu = tk.Menu(menubar, tearoff=0)
-    menubar.add_cascade(label="Báo cáo", menu=report_menu)
-    report_menu.add_command(label="Tạo báo cáo PDF", command=generate_report)
-    report_menu.add_command(label="Hiển thị biểu đồ phân phối điểm", command=show_score_distribution)
+    # Menu Chức năng
+    function_menu = tk.Menu(menubar, tearoff=0)
+    menubar.add_cascade(label="Chức năng", menu=function_menu)
+    function_menu.add_command(label="Biểu đồ phân phối điểm", command=show_score_distribution)
+    function_menu.add_command(label="Xuất báo cáo PDF", command=generate_report)
+    function_menu.add_separator()
+    function_menu.add_command(label="Kiểm tra cập nhật", command=lambda: check_for_updates_wrapper(True))
+    function_menu.add_command(label="Thông tin", command=show_about)
+
+def toggle_theme(style):
+    """Chuyển đổi giữa chế độ sáng và tối"""
+    global config
+    print(f"Trạng thái dark mode trước khi đổi: {config['ui']['dark_mode']}")
+    
+    # Đảo ngược trạng thái dark mode trước khi gọi hàm
+    config['ui']['dark_mode'] = not config['ui']['dark_mode']
+    print(f"Trạng thái dark mode sau khi đổi: {config['ui']['dark_mode']}")
+    
+    # Cập nhật giao diện với trạng thái mới
+    config = ui_utils.toggle_dark_mode(config, style, root)
+    
+    # In thông tin cấu hình sau khi cập nhật
+    print(f"Trạng thái dark mode sau khi toggle_dark_mode: {config['ui']['dark_mode']}")
+    print(f"Theme hiện tại: {config['ui']['theme']['background']}")
+    
+    # Lưu cấu hình
+    save_config()
+    
+    # Cập nhật màu sắc của menu
+    menubar = root.option_get('menu', '')
+    if menubar:
+        menu = tk._default_root.nametowidget(menubar)
+        if menu:
+            menu.configure(background=config['ui']['theme']['background'], 
+                         foreground=config['ui']['theme']['text'])
+            for submenu in ['Cài đặt', 'Chức năng']:
+                try:
+                    submenu_widget = menu.nametowidget(f"{menubar}.{submenu}")
+                    submenu_widget.configure(background=config['ui']['theme']['background'], 
+                                          foreground=config['ui']['theme']['text'])
+                except:
+                    pass
+    
+    # Force update để đảm bảo thay đổi được áp dụng
+    root.update_idletasks()
+    
+    # Cập nhật màu sắc của tooltip
+    if hasattr(ToolTip, 'tooltip') and ToolTip.tooltip:
+        for label in ToolTip.tooltip.winfo_children():
+            if isinstance(label, ttk.Label):
+                label.configure(background=config['ui']['theme']['card'], 
+                              foreground=config['ui']['theme']['text'])
 
 def show_about():
     """Hiển thị thông tin về phần mềm"""
+    # Lấy thông tin phiên bản và changelog
+    version_info = version_utils.load_version_info()
+    version = version_info.get('version', '1.0.0')
+    is_dev = version_info.get('is_dev', False)
+    code_name = version_info.get('code_name', '')
+    build_date = version_info.get('build_date', '')
+    
+    # Lấy changelog cho phiên bản hiện tại
+    changes = version_utils.get_changelog_for_version(version)
+    
+    # Tạo chuỗi thông tin
     about_text = f"""Phần mềm Quản lý Điểm Học Sinh
-Version: {config['version']}
+Version: {version}{' dev' if is_dev else ''}
+{code_name}
+Ngày phát hành: {build_date}
 
-Changelog v{config['version']}:
-""" + "\n".join(f"• {change}" for change in config['changelog'][config['version']]) + """
+Changelog v{version}:
+""" + "\n".join(f"• {change}" for change in changes) + """
 
-Xem thêm thông tin và cập nhật mới nhất tại GitLab.
+Xem thêm thông tin và cập nhật mới nhất tại GitHub.
     """
     
     about_window = tk.Toplevel(root)
@@ -2201,11 +2238,18 @@ Xem thêm thông tin và cập nhật mới nhất tại GitLab.
     about_window.transient(root)
     about_window.grab_set()
     
+    # Áp dụng theme hiện tại
+    about_window.configure(bg=config['ui']['theme']['background'])
+    
     # Thêm scrollable text widget
     text_frame = ttk.Frame(about_window)
     text_frame.pack(fill="both", expand=True, padx=15, pady=15)
     
-    about_text_widget = tk.Text(text_frame, wrap="word", font=(config['ui']['font_family'], 11))
+    # Tạo Text widget với màu sắc phù hợp với theme
+    about_text_widget = tk.Text(text_frame, wrap="word", 
+                              font=(config['ui']['font_family'], 11),
+                              bg=config['ui']['theme']['card'],
+                              fg=config['ui']['theme']['text'])
     about_text_widget.pack(side="left", fill="both", expand=True)
     
     scroll = ttk.Scrollbar(text_frame, command=about_text_widget.yview)
@@ -2221,12 +2265,12 @@ Xem thêm thông tin và cập nhật mới nhất tại GitLab.
     button_frame.pack(fill="x", padx=15, pady=15)
     
     ttk.Button(button_frame, text="Kiểm tra cập nhật", 
-              command=lambda: check_for_updates(True)).pack(side="left", padx=5)
+              command=lambda: check_for_updates_wrapper(True)).pack(side="left", padx=5)
     
     ttk.Button(button_frame, text="Đóng", 
               command=about_window.destroy).pack(side="right", padx=5)
 
-def check_for_updates(show_notification=True):
+def check_for_updates_wrapper(show_notification=True):
     """
     Kiểm tra phiên bản mới trên GitHub
     
@@ -2236,146 +2280,15 @@ def check_for_updates(show_notification=True):
     Returns:
         bool: True nếu có phiên bản mới, False nếu không
     """
-    try:
-        # URL của GitHub API để kiểm tra phiên bản mới nhất
-        github_api_url = "https://api.github.com/repos/TranMC/Import-score/releases/latest"
-        
-        # Hiển thị thông báo đang kiểm tra
-        if show_notification:
-            status_label.config(text="Đang kiểm tra phiên bản mới...", style="StatusWarning.TLabel")
-            root.update()
-        
-        # Gọi API để lấy thông tin phiên bản mới nhất
-        response = requests.get(github_api_url, timeout=5)
-        
-        # Kiểm tra kết quả
-        if response.status_code == 200:
-            release_info = response.json()
-            
-            # Lấy phiên bản mới nhất
-            latest_version = release_info.get('tag_name', '').lstrip('v')
-            current_version = config.get('version', '0.0.0')
-            
-            # Kiểm tra nếu phiên bản hiện tại cao hơn phiên bản mới nhất, đánh dấu là dev
-            if current_version > latest_version:
-                config['is_dev'] = True
-                save_config()  # Lưu cấu hình
-                
-                # Cập nhật hiển thị phiên bản
-                version_display = f"v{current_version} dev"
-                for widget in root.winfo_children():
-                    if isinstance(widget, ttk.Label) and widget.cget("text").startswith("v"):
-                        widget.config(text=version_display)
-                
-                if show_notification:
-                    if 'file_path' in globals() and file_path:
-                        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                    messagebox.showinfo("Phiên bản phát triển", f"Bạn đang sử dụng phiên bản phát triển ({current_version} dev). Phiên bản phát hành mới nhất là {latest_version}.")
-                return False
-                
-            # So sánh phiên bản
-            elif latest_version > current_version:
-                # Hiển thị thông báo có phiên bản mới
-                if show_notification:
-                    release_notes = release_info.get('body', 'Không có thông tin chi tiết.')
-                    result = messagebox.askyesno(
-                        "Có phiên bản mới",
-                        f"Đã phát hiện phiên bản mới: {latest_version}\n"
-                        f"Phiên bản hiện tại: {current_version}\n\n"
-                        f"Tính năng mới:\n{release_notes[:200]}{'...' if len(release_notes) > 200 else ''}\n\n"
-                        "Bạn có muốn tải phiên bản mới không?"
-                    )
-                    
-                    if result:
-                        # Tìm URL để tải xuống
-                        download_url = ""
-                        for asset in release_info.get('assets', []):
-                            if asset.get('name', '').endswith('.exe'):
-                                download_url = asset.get('browser_download_url', '')
-                                break
-                                
-                        if download_url:
-                            try:
-                                # Hiển thị thông báo đang tải
-                                status_label.config(text=f"Đang tải phiên bản mới {latest_version}...", 
-                                                  style="StatusWarning.TLabel")
-                                root.update()
-                                
-                                # Tạo thư mục tạm để tải xuống
-                                temp_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-                                os.makedirs(temp_dir, exist_ok=True)
-                                
-                                # Tạo tên file tạm
-                                file_name = os.path.basename(download_url)
-                                temp_file = os.path.join(temp_dir, file_name)
-                                
-                                # Tải xuống tệp
-                                with requests.get(download_url, stream=True) as r:
-                                    r.raise_for_status()
-                                    total_size = int(r.headers.get('content-length', 0))
-                                    
-                                    # Ghi tệp đã tải xuống
-                                    with open(temp_file, 'wb') as f:
-                                        for chunk in r.iter_content(chunk_size=8192):
-                                            f.write(chunk)
-                                
-                                # Hỏi người dùng có muốn cài đặt không
-                                install_now = messagebox.askyesno("Tải xuống hoàn tất", 
-                                                             f"Đã tải phiên bản {latest_version} về:\n{temp_file}\n\nBạn có muốn cài đặt ngay bây giờ không?")
-                                
-                                if install_now:
-                                    # Chạy tệp cài đặt và thoát ứng dụng hiện tại
-                                    os.startfile(temp_file)
-                                    root.after(1000, root.destroy)
-                                
-                                status_label.config(text=f"Đã tải phiên bản mới {latest_version}", 
-                                                  style="StatusSuccess.TLabel")
-                            except Exception as download_error:
-                                messagebox.showerror("Lỗi tải xuống", 
-                                                f"Không thể tải phiên bản mới: {str(download_error)}\n\nVui lòng tải thủ công từ trang web.")
-                                import webbrowser
-                                webbrowser.open(release_info.get('html_url', ''))
-                        else:
-                            import webbrowser
-                            webbrowser.open(release_info.get('html_url', ''))
-                
-                if 'file_path' in globals() and file_path:
-                    status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                return True
-            else:
-                # Không có phiên bản mới
-                if show_notification:
-                    if 'file_path' in globals() and file_path:
-                        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                    messagebox.showinfo("Cập nhật", f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
-                return False
-        else:
-            # Lỗi kết nối
-            if show_notification:
-                if 'file_path' in globals() and file_path:
-                    status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-                messagebox.showwarning("Lỗi kết nối", f"Không thể kết nối đến máy chủ GitHub. Mã lỗi: {response.status_code}")
-            return False
-    
-    except requests.RequestException as e:
-        # Xử lý lỗi request
-        if show_notification:
-            if 'file_path' in globals() and file_path:
-                status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-            messagebox.showwarning("Lỗi kết nối", f"Không thể kiểm tra phiên bản mới: {str(e)}")
-        return False
-    
-    except Exception as e:
-        # Xử lý các lỗi khác
-        if show_notification:
-            if 'file_path' in globals() and file_path:
-                status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
-            messagebox.showwarning("Lỗi", f"Đã xảy ra lỗi khi kiểm tra phiên bản mới: {str(e)}")
-        return False
+    # Sử dụng hàm được tách ra từ module check_for_updates
+    from check_for_updates import check_for_updates
+    return check_for_updates(root, status_label, file_path, config, save_config, show_notification)
 
 def check_updates_async():
     """Kiểm tra cập nhật trong luồng riêng biệt để không làm đóng băng giao diện"""
-    threading.Thread(target=check_for_updates, daemon=True).start()
+    # Sử dụng hàm từ module check_for_updates
+    from check_for_updates import check_updates_async as check_updates_async_func
+    check_updates_async_func(root, status_label, file_path, config, save_config)
 
 def update_stats():
     """Cập nhật các thống kê cơ bản"""
@@ -2759,6 +2672,32 @@ def focus_correct_count(event=None):
 
 # Khởi tạo giao diện
 create_ui()
+
+# Tạo biến style
+style = ttk.Style()
+
+# Tạo menu
+menubar = tk.Menu(root)
+root.config(menu=menubar)
+
+# Menu Cài đặt
+settings_menu = tk.Menu(menubar, tearoff=0)
+menubar.add_cascade(label="Cài đặt", menu=settings_menu)
+settings_menu.add_command(label="Tùy chỉnh phím tắt", command=customize_shortcuts)
+settings_menu.add_command(label="Tùy chỉnh mã đề", command=customize_exam_codes)
+settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)
+settings_menu.add_command(label="Bảo mật", command=customize_security)
+settings_menu.add_separator()
+settings_menu.add_command(label="Chế độ tối/sáng", command=lambda: toggle_theme(style))
+
+# Menu Chức năng
+function_menu = tk.Menu(menubar, tearoff=0)
+menubar.add_cascade(label="Chức năng", menu=function_menu)
+function_menu.add_command(label="Biểu đồ phân phối điểm", command=show_score_distribution)
+function_menu.add_command(label="Xuất báo cáo PDF", command=generate_report)
+function_menu.add_separator()
+function_menu.add_command(label="Kiểm tra cập nhật", command=lambda: check_for_updates_wrapper(True))
+function_menu.add_command(label="Thông tin", command=show_about)
 
 # Thêm binding phím tắt
 root.bind('<Control-z>', undo)

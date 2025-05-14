@@ -1,3 +1,31 @@
+## Version 2.0.5
+### Date: 14/05/2024 14:48:24
+### Changes:
+- Thêm chế độ Dark Mode
+- Tối ưu giao diện responsive
+- Điều chỉnh màu sắc dễ nhìn hơn ở Light Mode
+- Tách version và changelog ra file riêng biệt
+- Cải thiện hiển thị thông báo kiểm tra phiên bản
+- Sửa lỗi kiểm tra cập nhật
+- Cải thiện chế độ tối với màu sắc tương phản cao hơn
+- Khắc phục lỗi hiển thị các widget trong chế độ tối
+
+--------------------------------------------------
+## Version 1.9.5
+### Date: 14/05/2024 14:36:33
+### Changes:
+- Thêm chế độ Dark Mode
+- Tối ưu giao diện responsive
+- Điều chỉnh màu sắc dễ nhìn hơn ở Light Mode
+- Tách version và changelog ra file riêng biệt
+- Cải thiện hiển thị thông báo kiểm tra phiên bản
+
+--------------------------------------------------
+## Version unknown
+### Date: 14/05/2024 14:23:26
+### Changes:No changelog section found in config
+
+--------------------------------------------------
 ## Version 1.7.1
 ### Date: 14/05/2025 13:49:37
 ### Changes:

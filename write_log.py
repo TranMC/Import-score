@@ -4,6 +4,7 @@ import re
 import json
 import sys
 import traceback
+import version_utils
 
 def setup_encoding():
     """Set up UTF-8 encoding for console output"""
@@ -22,19 +23,12 @@ def setup_encoding():
         print(f"Warning: Failed to set encoding: {str(e)}")
 
 def extract_version():
-    """Extract version from import_score.py file"""
+    """Extract version from version.json file using version_utils"""
     try:
-        with open("import_score.py", "r", encoding="utf-8") as f:
-            content = f.read()
-            
-            # Search for version in config structure
-            version_match = re.search(r"'version':\s*'([^']+)'", content)
-            if version_match:
-                version = version_match.group(1)
-                print(f"Found version: {version}")
-                return version
-            else:
-                raise ValueError("Version not found in import_score.py")
+        version_info = version_utils.load_version_info()
+        version = version_info.get('version', 'unknown')
+        print(f"Found version: {version}")
+        return version
     except Exception as e:
         print(f"Error reading version: {str(e)}")
         print(f"Error details: {traceback.format_exc()}")
@@ -52,42 +46,19 @@ def write_version_file(version):
         return False
 
 def extract_changelog(version):
-    """Extract changelog from import_score.py file"""
+    """Extract changelog from changelog.json file using version_utils"""
     try:
-        with open("import_score.py", "r", encoding="utf-8") as f:
-            content = f.read()
-            print("Searching for changelog...")
-            
-            # Find specific changelog for current version in config
-            changelog_section = re.search(r"'changelog'\s*:\s*{([^}]*)}", content, re.DOTALL)
-            
-            if changelog_section:
-                changelog_dict_text = '{' + changelog_section.group(1) + '}'
-                # Convert text to json-compatible
-                changelog_dict_text = changelog_dict_text.replace("'", '"')
-                
-                # Find and process current version
-                version_pattern = f'"{version}"\\s*:\\s*\\[(.*?)\\]'
-                version_changelog_match = re.search(version_pattern, changelog_dict_text, re.DOTALL)
-                
-                if version_changelog_match:
-                    # Get changelog content
-                    version_changelog_text = version_changelog_match.group(1)
-                    # Split changelog items
-                    changelog_items = re.findall(r'"([^"]*)"', version_changelog_text)
-                    if changelog_items:
-                        changelog = "\n- " + "\n- ".join(changelog_items)
-                        print(f"Found {len(changelog_items)} changelog items")
-                        return changelog
-                    else:
-                        print("No changelog details found")
-                        return "No detailed changelog information"
-                else:
-                    print(f"No changelog found for version {version}")
-                    return f"No changelog found for version {version}"
-            else:
-                print("No changelog section found in config")
-                return "No changelog section found in config"
+        # Sử dụng hàm từ version_utils để lấy changelog cho phiên bản cụ thể
+        changelog_items = version_utils.get_changelog_for_version(version)
+        
+        if changelog_items:
+            # Chuyển đổi các mục changelog thành định dạng markdown
+            changelog = "\n- " + "\n- ".join(changelog_items)
+            print(f"Found {len(changelog_items)} changelog items")
+            return changelog
+        else:
+            print(f"No changelog found for version {version}")
+            return f"No changelog found for version {version}"
                 
     except Exception as e:
         print(f"Error reading changelog: {str(e)}")

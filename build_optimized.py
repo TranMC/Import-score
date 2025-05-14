@@ -5,12 +5,19 @@ import py_compile
 
 print("Quá trình build bắt đầu...")
 
-# Đọc phiên bản từ version.txt
+# Đọc phiên bản từ version.txt hoặc version.json
 try:
-    with open("version.txt", "r", encoding="utf-8") as f:
-        version = f.read().strip()
+    # Thử đọc phiên bản từ version.json bằng version_utils
+    import version_utils
+    version_info = version_utils.load_version_info()
+    version = version_info.get('version', 'unknown')
 except:
-    version = "4.0"  # Phiên bản mặc định nếu không đọc được
+    # Thử đọc từ version.txt (cách cũ)
+    try:
+        with open("version.txt", "r", encoding="utf-8") as f:
+            version = f.read().strip()
+    except:
+        version = "4.0"  # Phiên bản mặc định nếu không đọc được
 
 print(f"Building version: {version}")
 
@@ -19,6 +26,10 @@ print("Kiểm tra lỗi cú pháp trong mã nguồn...")
 try:
     py_compile.compile("import_score.py", doraise=True)
     py_compile.compile("write_log.py", doraise=True)
+    py_compile.compile("themes.py", doraise=True)
+    py_compile.compile("ui_utils.py", doraise=True)
+    py_compile.compile("version_utils.py", doraise=True)
+    py_compile.compile("check_for_updates.py", doraise=True)
     print("Không tìm thấy lỗi cú pháp trong mã nguồn.")
 except py_compile.PyCompileError as e:
     print(f"Lỗi cú pháp trong mã nguồn: {str(e)}")
@@ -41,7 +52,10 @@ except ImportError:
 sep = ';' if os.name == 'nt' else ':'
 
 # Tự động tìm đường dẫn file config
-data_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+current_dir = os.path.dirname(os.path.abspath(__file__))
+app_config_file = os.path.join(current_dir, "app_config.json")
+version_json_file = os.path.join(current_dir, "version.json")
+changelog_json_file = os.path.join(current_dir, "changelog.json")
 
 # Tạo thư mục dist nếu chưa tồn tại
 if not os.path.exists("dist"):
@@ -69,7 +83,9 @@ options = [
     '--exclude-module=xml.dom.domreg',
     '--exclude-module=pycparser',
     '--exclude-module=sqlite3',
-    f'--add-data={data_file}{sep}.',
+    f'--add-data={app_config_file}{sep}.',
+    f'--add-data={version_json_file}{sep}.',
+    f'--add-data={changelog_json_file}{sep}.',
     '--upx-dir=upx',
     '--hidden-import=pandas._libs.tslibs.base',
     '--hidden-import=pandas._libs.tslibs.np_datetime',
@@ -85,6 +101,10 @@ options = [
     '--hidden-import=PIL._tkinter_finder',
     '--hidden-import=PIL.Image',
     '--hidden-import=cryptography',
+    '--hidden-import=themes',
+    '--hidden-import=ui_utils',
+    '--hidden-import=version_utils',
+    '--hidden-import=check_for_updates',
 ]
 
 # Chạy PyInstaller với các options tối ưu

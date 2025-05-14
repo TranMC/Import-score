@@ -1,0 +1,144 @@
+{   
+    "2.2.3": [
+        "Kiểm tra lại tình trạng các cài dặt",
+        "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng không hoạt động",
+        "Cải thiện độ tương phản của giao diện trong chế độ tối",
+        "Vấn đề tồn đọng: có mã đề nhưng vẫn báo lỗi không tìm thấy"
+    ],
+    "2.1.2": [
+        "Sửa lỗi phần nhập điểm và mã đề bị biến mất do xung đột vị trí hiển thị"
+    ],
+    "2.0.5": [
+        "Thêm chế độ Dark Mode",
+        "Tối ưu giao diện responsive",
+        "Điều chỉnh màu sắc dễ nhìn hơn ở Light Mode",
+        "Tách version và changelog ra file riêng biệt",
+        "Cải thiện hiển thị thông báo kiểm tra phiên bản",
+        "Sửa lỗi kiểm tra cập nhật",
+        "Cải thiện chế độ tối với màu sắc tương phản cao hơn",
+        "Khắc phục lỗi hiển thị các widget trong chế độ tối",
+        "Sửa lỗi chuyển đổi chế độ tối bị mắc kẹt ở trạng thái nửa tối/nửa sáng",
+        "Sửa lỗi kiểm tra cập nhật tự động khi mở ứng dụng",
+        "Khắc phục vấn đề hiển thị phần nhập mã đề, nhập số câu đúng và nhập điểm trực tiếp",
+        "Cải thiện giao diện chung và khả năng nhìn thấy của các widget trong tất cả chế độ",
+        "Nút chuyển đổi chế độ tối/sáng được thiết kế lại để hoạt động ổn định hơn",
+        "Sửa lỗi phần nhập điểm và mã đề bị biến mất do xung đột vị trí hiển thị"
+    ],
+    "1.9.4": [
+        "Thêm cảnh báo khi xóa học sinh",
+        "Cải thiện hiệu suất tìm kiếm",
+        "Sửa lỗi hiển thị thông tin điểm cao nhất/thấp nhất"
+    ],
+    "1.9.3": [
+        "Nâng cấp giao diện người dùng",
+        "Thêm thống kê số học sinh đạt/không đạt",
+        "Sửa lỗi báo cáo PDF"
+    ],
+    "1.9.2": [
+        "Thêm tùy chọn bảo mật dữ liệu",
+        "Cải thiện hiệu suất với file lớn",
+        "Sửa lỗi khi xuất báo cáo PDF"
+    ],
+    "1.9.1": [
+        "Thêm tính năng sao lưu và phục hồi dữ liệu",
+        "Thêm tùy chọn mã hóa file backup",
+        "Cải thiện giao diện người dùng"
+    ],
+    "1.9.0": [
+        "Thêm tính năng tìm kiếm nâng cao",
+        "Thêm tùy chọn xuất dữ liệu",
+        "Cải thiện tốc độ xử lý với file lớn",
+        "Thêm tùy chọn cấu hình ứng dụng"
+    ],
+    "1.8.2": [
+        "Sửa lại một số lỗi liên quan đến pandas mới",
+        "Sửa lại một số lỗi liên quan đến matplotlib mới"
+    ],
+    "1.8.1": [
+        "Thêm tính năng theo dõi thời gian làm việc",
+        "Cải thiện hiển thị biểu đồ thống kê",
+        "Sửa lỗi khi nhập điểm"
+    ],
+    "1.8.0": [
+        "Thêm tính năng báo cáo tự động",
+        "Cải thiện giao diện người dùng",
+        "Sửa lỗi khi tải file lớn"
+    ],
+    "1.7.1": [
+        "Sửa lại một số lỗi trước đó"
+    ],
+    "1.7.0": [
+        "Thêm tính năng nhập điểm từ máy quét",
+        "Thêm tùy chọn xuất dữ liệu sang Excel",
+        "Sửa lỗi khi tìm kiếm học sinh"
+    ],
+    "1.6.0": [
+        "Thêm tính năng xuất báo cáo PDF",
+        "Thêm biểu đồ phân phối điểm số",
+        "Thêm thống kê tỷ lệ đạt/không đạt",
+        "Cải thiện giao diện thống kê",
+        "Sửa các lỗi liên quan đến pandas mới"
+    ],
+    "1.5.5": [
+        "Thêm tính năng hiển thị điểm cao nhất và thấp nhất",
+        "Tự động chọn học sinh khi chỉ có một kết quả tìm kiếm",
+        "Cải thiện trải nghiệm tìm kiếm với delay thông minh",
+        "Thêm thống kê số học sinh có điểm/tổng số học sinh"
+    ],
+    "1.5.4": [
+        "Thêm tính năng hoàn tác (Ctrl+Z)",
+        "Thêm tính năng tùy chỉnh phím tắt",
+        "Thêm tính năng tùy chỉnh mã đề",
+        "Cải thiện UX cho tìm kiếm học sinh",
+        "Thêm tính năng lưu cấu hình",
+        "Chỉnh lại vài lỗi đã biết (không tự động tìm kiếm, lỗi khi đổi mục tìm)"
+    ],
+    "1.5.0": [
+        "Thêm tính năng mã hóa dữ liệu",
+        "Cải thiện hiệu suất khi xử lý file lớn",
+        "Thêm tùy chọn sao lưu tự động"
+    ],
+    "1.4.0": [
+        "Cải thiện giao diện người dùng",
+        "Thêm cấu hình số câu hỏi và điểm mỗi câu",
+        "Tối ưu hóa kích thước cửa sổ",
+        "Thêm danh sách mã đề có sẵn",
+        "Tự động lưu sau mỗi thay đổi"
+    ],
+    "1.3.0": [
+        "Thêm tính năng hoàn tác (Ctrl+Z)",
+        "Cải thiện hiệu suất tìm kiếm",
+        "Sửa lỗi nhập điểm"
+    ],
+    "1.2.0": [
+        "Thêm tính năng import từ Excel khác",
+        "Cải thiện hiển thị danh sách học sinh",
+        "Thêm validation dữ liệu nhập vào"
+    ],
+    "1.1.0": [
+        "Thêm tính năng tìm kiếm học sinh",
+        "Thêm tính năng tự động tính điểm",
+        "Cải thiện UI/UX"
+    ],
+    "1.0.0": [
+        "Phiên bản khởi tạo của ứng dụng",
+        "Tính năng cơ bản: nhập điểm, quản lý học sinh",
+        "Lưu trữ dữ liệu bằng Excel"
+    ],
+    "1.1.0": [
+        "Thêm tính năng tự động sao lưu khi thoát",
+        "Cải thiện hiệu suất khi đọc file Excel lớn",
+        "Thêm biểu đồ phân phối điểm"
+    ],
+    "1.2.0": [
+        "Thêm tính năng mã hóa dữ liệu sao lưu",
+        "Tùy chọn cấu hình cột trong file Excel",
+        "Cải thiện UI với chế độ tối/sáng"
+    ],
+    "1.2.1": [
+        "Sửa lỗi mã đề không hiển thị đúng",
+        "Tối ưu hóa bộ nhớ khi xử lý file lớn",
+        "Sửa lỗi hiển thị thành phần nhập điểm và mã đề",
+        "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng"
+    ]
+} 
