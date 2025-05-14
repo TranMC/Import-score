@@ -300,7 +300,38 @@ def check_updates_async(root, status_label, file_path, config, save_config):
         config: Dictionary chứa cấu hình ứng dụng
         save_config: Hàm lưu cấu hình
     """
+    print("Starting async check for updates...")
     threading.Thread(
         target=lambda: check_for_updates(root, status_label, file_path, config, save_config, False), 
         daemon=True
-    ).start() 
+    ).start()
+    print("Update check thread started")
+
+# Thêm main function để module có thể chạy độc lập
+if __name__ == "__main__":
+    print("Running check_for_updates module directly")
+    print("This module is designed to be imported, but we'll attempt to check for updates directly")
+    
+    # Tạo config đơn giản
+    dummy_config = {
+        'ui': {
+            'theme': {
+                'primary': '#1976D2',
+                'background': '#FFFFFF',
+                'card': '#F5F5F5',
+                'text': '#000000'
+            },
+            'font_family': 'Segoe UI',
+            'font_size': {
+                'normal': 11
+            }
+        }
+    }
+    
+    # Hàm save_config giả
+    def dummy_save_config():
+        print("Dummy save_config called")
+    
+    # Kiểm tra cập nhật
+    result = check_for_updates(None, None, None, dummy_config, dummy_save_config, True)
+    print(f"Update check result: {'Updates available' if result else 'No updates available or error occurred'}") 

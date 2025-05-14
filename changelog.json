@@ -1,9 +1,16 @@
 {   
+    "2.2.4": [
+        "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng không hoạt động",
+        "Cải thiện độ tương phản của giao diện trong chế độ tối",
+        "Vấn đề tồn đọng: có mã đề nhưng vẫn báo lỗi không tìm thấy",
+        "Khôi phục chức năng tự động kiểm tra cập nhật khi khởi động ứng dụng"
+    ],
     "2.2.3": [
         "Kiểm tra lại tình trạng các cài dặt",
         "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng không hoạt động",
         "Cải thiện độ tương phản của giao diện trong chế độ tối",
-        "Vấn đề tồn đọng: có mã đề nhưng vẫn báo lỗi không tìm thấy"
+        "Vấn đề tồn đọng: có mã đề nhưng vẫn báo lỗi không tìm thấy",
+        "Khôi phục chức năng tự động kiểm tra cập nhật khi khởi động ứng dụng"
     ],
     "2.1.2": [
         "Sửa lỗi phần nhập điểm và mã đề bị biến mất do xung đột vị trí hiển thị"
@@ -115,11 +122,6 @@
         "Cải thiện hiển thị danh sách học sinh",
         "Thêm validation dữ liệu nhập vào"
     ],
-    "1.1.0": [
-        "Thêm tính năng tìm kiếm học sinh",
-        "Thêm tính năng tự động tính điểm",
-        "Cải thiện UI/UX"
-    ],
     "1.0.0": [
         "Phiên bản khởi tạo của ứng dụng",
         "Tính năng cơ bản: nhập điểm, quản lý học sinh",
@@ -129,11 +131,6 @@
         "Thêm tính năng tự động sao lưu khi thoát",
         "Cải thiện hiệu suất khi đọc file Excel lớn",
         "Thêm biểu đồ phân phối điểm"
-    ],
-    "1.2.0": [
-        "Thêm tính năng mã hóa dữ liệu sao lưu",
-        "Tùy chọn cấu hình cột trong file Excel",
-        "Cải thiện UI với chế độ tối/sáng"
     ],
     "1.2.1": [
         "Sửa lỗi mã đề không hiển thị đúng",

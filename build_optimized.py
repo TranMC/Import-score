@@ -105,6 +105,8 @@ options = [
     '--hidden-import=ui_utils',
     '--hidden-import=version_utils',
     '--hidden-import=check_for_updates',
+    '--hidden-import=openpyxl',
+    '--hidden-import=openpyxl.cell',
 ]
 
 # Chạy PyInstaller với các options tối ưu

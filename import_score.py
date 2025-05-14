@@ -2287,8 +2287,10 @@ def check_for_updates_wrapper(show_notification=True):
 def check_updates_async():
     """Kiểm tra cập nhật trong luồng riêng biệt để không làm đóng băng giao diện"""
     # Sử dụng hàm từ module check_for_updates
+    print("import_score: Gọi check_updates_async - kiểm tra cập nhật tự động khi khởi động")
     from check_for_updates import check_updates_async as check_updates_async_func
     check_updates_async_func(root, status_label, file_path, config, save_config)
+    print("import_score: Đã gọi xong check_updates_async_func")
 
 def update_stats():
     """Cập nhật các thống kê cơ bản"""
