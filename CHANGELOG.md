@@ -1,3 +1,10 @@
+## Version 2.3.1
+### Date: 14/05/2024 15:59:07
+### Changes:
+- Thêm thanh progress bar khi download file update
+- Thêm tiến trình tạo pdf
+
+--------------------------------------------------
 ## Version 2.0.5
 ### Date: 14/05/2024 14:48:24
 ### Changes:

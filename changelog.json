@@ -1,4 +1,7 @@
-{   
+{   "2.3.1":[
+        "Thêm thanh progress bar khi download file update",
+        "Thêm tiến trình tạo pdf"
+],
     "2.2.4": [
         "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng không hoạt động",
         "Cải thiện độ tương phản của giao diện trong chế độ tối",

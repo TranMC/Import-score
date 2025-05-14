@@ -101,7 +101,7 @@ jobs:
     - name: Prepare release files
       run: |
         mkdir -p release_files
-        find ./artifacts -type f -name "*.exe" -exec cp {} ./release_files/ \;
+        find ./artifacts/dist -type f -name "Student Score Import v$VERSION.exe" -exec cp {} ./release_files/ \;
         ls -la ./release_files/
       shell: bash
         

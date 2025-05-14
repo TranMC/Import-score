@@ -22,7 +22,6 @@ import requests
 import version_utils
 import themes
 import ui_utils
-from check_for_updates import check_for_updates, check_updates_async
 
 # Tạo class ToolTip để hiển thị gợi ý khi di chuột qua các nút
 class ToolTip:
@@ -2288,9 +2287,14 @@ def check_updates_async():
     """Kiểm tra cập nhật trong luồng riêng biệt để không làm đóng băng giao diện"""
     # Sử dụng hàm từ module check_for_updates
     print("import_score: Gọi check_updates_async - kiểm tra cập nhật tự động khi khởi động")
-    from check_for_updates import check_updates_async as check_updates_async_func
-    check_updates_async_func(root, status_label, file_path, config, save_config)
-    print("import_score: Đã gọi xong check_updates_async_func")
+    # Thay đổi cách gọi hàm, trực tiếp gọi check_for_updates
+    from check_for_updates import check_for_updates
+    # Tạo thread để tránh việc làm đóng băng giao diện
+    threading.Thread(
+        target=lambda: check_for_updates(root, status_label, file_path, config, save_config, False),
+        daemon=True
+    ).start()
+    print("import_score: Đã khởi động thread kiểm tra cập nhật")
 
 def update_stats():
     """Cập nhật các thống kê cơ bản"""
@@ -2361,18 +2365,18 @@ def generate_report():
     global df
     
     if df is None or df.empty:
-        messagebox.showwarning("Warning", "No data available for report generation")
+        messagebox.showwarning("Thông báo", "Không có dữ liệu để tạo báo cáo")
         return
         
     if 'Điểm' not in df.columns:
-        messagebox.showwarning("Warning", "Score column not found in data")
+        messagebox.showwarning("Thông báo", "Không tìm thấy cột điểm trong dữ liệu")
         return
         
     # Lọc chỉ lấy học sinh có điểm
     scores_df = df[df['Điểm'].notna()].copy()
     
     if len(scores_df) == 0:
-        messagebox.showwarning("Warning", "No students with scores found")
+        messagebox.showwarning("Thông báo", "Chưa có học sinh nào có điểm")
         return
     
     try:
@@ -2380,72 +2384,152 @@ def generate_report():
         file_path = filedialog.asksaveasfilename(
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],
-            title="Save PDF Report"
+            title="Lưu báo cáo PDF"
         )
         
         if not file_path:
             return  # Người dùng hủy
             
+        # Tạo cửa sổ hiển thị tiến trình tạo báo cáo
+        progress_window = tk.Toplevel(root)
+        progress_window.title("Đang tạo báo cáo PDF")
+        progress_window.geometry("450x200")
+        progress_window.transient(root)  # Đặt là cửa sổ con của root
+        
+        # Đặt cửa sổ ở giữa màn hình
+        window_width = 450
+        window_height = 200
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        position_x = int(screen_width/2 - window_width/2)
+        position_y = int(screen_height/2 - window_height/2)
+        progress_window.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
+        
+        # Ngăn không cho đóng cửa sổ tiến trình
+        progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Thiết lập màu nền
+        progress_frame = ttk.Frame(progress_window, padding=15)
+        progress_frame.pack(fill="both", expand=True)
+        
+        # Label hiển thị thông tin
+        ttk.Label(progress_frame, 
+               text="Đang tạo báo cáo PDF...",
+               font=(config['ui']['font_family'], 12, 'bold'),
+               foreground=config['ui']['theme']['primary']).pack(pady=5)
+        
+        # Frame chứa thông tin chi tiết
+        info_frame = ttk.Frame(progress_frame)
+        info_frame.pack(fill="x", pady=5)
+        
+        # Label hiển thị tên file
+        file_label = ttk.Label(info_frame, 
+                            text=f"File: {os.path.basename(file_path)}",
+                            font=(config['ui']['font_family'], 10))
+        file_label.pack(anchor="w", pady=2)
+        
+        # Label hiển thị số lượng học sinh
+        students_label = ttk.Label(info_frame, 
+                               text=f"Tổng số học sinh: {len(df)}, Có điểm: {len(scores_df)}",
+                               font=(config['ui']['font_family'], 10))
+        students_label.pack(anchor="w", pady=2)
+        
+        # Tạo style cho thanh tiến trình
+        style = ttk.Style()
+        style.configure("PDF.Horizontal.TProgressbar", 
+                      troughcolor=config['ui']['theme']['background'],
+                      background=config['ui']['theme']['primary'],
+                      thickness=15)
+        
+        # Thanh tiến trình
+        progress = ttk.Progressbar(progress_frame, 
+                                orient="horizontal", 
+                                length=400, 
+                                mode="determinate",
+                                style="PDF.Horizontal.TProgressbar")
+        progress.pack(pady=10, fill="x")
+        
+        # Label hiển thị trạng thái
+        status_label_progress = ttk.Label(progress_frame, 
+                                      text="Đang chuẩn bị dữ liệu...", 
+                                      font=(config['ui']['font_family'], 10))
+        status_label_progress.pack(pady=5)
+        
+        # Cập nhật giao diện trước khi bắt đầu
+        progress_window.update()
+        
+        # Hàm cập nhật tiến trình
+        def update_progress(value, message):
+            progress["value"] = value
+            status_label_progress.config(text=message)
+            progress_window.update_idletasks()
+        
         # Hiển thị thông báo đang tạo báo cáo
-        status_label.config(text="Creating PDF report...", style="StatusWarning.TLabel")
+        status_label.config(text="Đang tạo báo cáo PDF...", style="StatusWarning.TLabel")
         root.update()
         
         # Tạo tệp PDF
+        update_progress(10, "Đang chuẩn bị dữ liệu...")
+        
         with PdfPages(file_path) as pdf:
             # Trang 1: Thông tin chung
+            update_progress(20, "Đang tạo trang thống kê chung...")
             plt.figure(figsize=(10, 12))
             plt.axis('off')
             
             # Tiêu đề báo cáo
-            title_text = f"SCORE STATISTICS REPORT"
-            subtitle_text = f"Created: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            title_text = f"BÁO CÁO THỐNG KÊ ĐIỂM SỐ"
+            subtitle_text = f"Ngày tạo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
             
             plt.text(0.5, 0.98, title_text, fontsize=16, ha='center', va='top', fontweight='bold')
             plt.text(0.5, 0.95, subtitle_text, fontsize=12, ha='center', va='top')
             
             # Thông tin cơ bản
             info_text = [
-                f"Total students: {len(df)}",
-                f"Students with scores: {len(scores_df)} ({len(scores_df)/len(df):.1%})",
-                f"Average score: {scores_df['Điểm'].mean():.2f}",
-                f"Highest score: {scores_df['Điểm'].max():.2f}",
-                f"Lowest score: {scores_df['Điểm'].min():.2f}",
-                f"Standard deviation: {scores_df['Điểm'].std():.2f}"
+                f"Tổng số học sinh: {len(df)}",
+                f"Học sinh có điểm: {len(scores_df)} ({len(scores_df)/len(df):.1%})",
+                f"Điểm trung bình: {scores_df['Điểm'].mean():.2f}",
+                f"Điểm cao nhất: {scores_df['Điểm'].max():.2f}",
+                f"Điểm thấp nhất: {scores_df['Điểm'].min():.2f}",
+                f"Độ lệch chuẩn: {scores_df['Điểm'].std():.2f}"
             ]
             
-            plt.text(0.1, 0.9, "Overview:", fontsize=14, va='top', fontweight='bold')
+            plt.text(0.1, 0.9, "Tổng quan:", fontsize=14, va='top', fontweight='bold')
             y_pos = 0.85
             for info in info_text:
                 plt.text(0.1, y_pos, info, fontsize=12, va='top')
                 y_pos -= 0.03
             
+            update_progress(30, "Đang vẽ biểu đồ phân phối điểm...")
             # Biểu đồ phân phối điểm
             ax1 = plt.axes([0.1, 0.45, 0.8, 0.3])
             scores_df['Điểm'].hist(ax=ax1, bins=10, alpha=0.7, color='blue', edgecolor='black')
-            ax1.set_title('Score Distribution')
-            ax1.set_xlabel('Score')
-            ax1.set_ylabel('Number of Students')
+            ax1.set_title('Phân phối điểm số')
+            ax1.set_xlabel('Điểm')
+            ax1.set_ylabel('Số học sinh')
             ax1.grid(True, alpha=0.3)
             
             # Thêm đường trung bình
             mean_score = scores_df['Điểm'].mean()
             ax1.axvline(mean_score, color='red', linestyle='dashed', linewidth=1)
-            ax1.text(mean_score + 0.1, ax1.get_ylim()[1]*0.9, f'Avg: {mean_score:.2f}', color='red')
+            ax1.text(mean_score + 0.1, ax1.get_ylim()[1]*0.9, f'TB: {mean_score:.2f}', color='red')
             
+            update_progress(40, "Đang vẽ biểu đồ tỷ lệ đạt/không đạt...")
             # Biểu đồ tròn tỷ lệ đạt/không đạt
             ax2 = plt.axes([0.1, 0.1, 0.35, 0.25])
             pass_threshold = 5.0
             passed = (scores_df['Điểm'] >= pass_threshold).sum()
             failed = len(scores_df) - passed
             
-            labels = ['Pass (≥ 5.0)', 'Fail (< 5.0)']
+            labels = ['Đạt (≥ 5.0)', 'Không đạt (< 5.0)']
             sizes = [passed, failed]
             colors = ['#66b3ff', '#ff9999']
             
             ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
             ax2.axis('equal')
-            ax2.set_title('Pass/Fail Ratio')
+            ax2.set_title('Tỷ lệ học sinh đạt/không đạt')
             
+            update_progress(50, "Đang tạo bảng học sinh điểm cao...")
             # Bảng học sinh điểm cao nhất
             ax3 = plt.axes([0.55, 0.05, 0.35, 0.3])
             ax3.axis('tight')
@@ -2457,22 +2541,24 @@ def generate_report():
             top_data = [[student, score] for student, score in 
                        zip(top_students[name_col], top_students['Điểm'])]
             
-            top_table = ax3.table(cellText=top_data, colLabels=[name_col, 'Score'],
+            top_table = ax3.table(cellText=top_data, colLabels=[name_col, 'Điểm'],
                               loc='center', cellLoc='center')
             top_table.auto_set_font_size(False)
             top_table.set_fontsize(10)
             top_table.scale(1, 1.5)
             
-            ax3.set_title('Top Students')
+            ax3.set_title('Học sinh điểm cao nhất')
             
+            update_progress(60, "Đang lưu trang thống kê...")
             pdf.savefig()
             plt.close()
             
             # Trang 2: Danh sách điểm
+            update_progress(70, "Đang tạo danh sách điểm học sinh...")
             plt.figure(figsize=(10, 12))
             plt.axis('off')
             
-            plt.text(0.5, 0.98, "STUDENT SCORE LIST", fontsize=16, ha='center', fontweight='bold')
+            plt.text(0.5, 0.98, "DANH SÁCH ĐIỂM HỌC SINH", fontsize=16, ha='center', fontweight='bold')
             
             # Vẽ bảng điểm
             ax = plt.axes([0.05, 0.05, 0.9, 0.85])
@@ -2491,13 +2577,13 @@ def generate_report():
                              zip(sorted_df[name_col][:page_size], 
                                  sorted_df[exam_code_col][:page_size], 
                                  sorted_df['Điểm'][:page_size])]
-                col_labels = [name_col, exam_code_col, 'Score']
+                col_labels = [name_col, exam_code_col, 'Điểm']
             else:
                 sorted_df = scores_df.sort_values(name_col)
                 table_data = [[student, score] for student, score in 
                              zip(sorted_df[name_col][:page_size], 
                                  sorted_df['Điểm'][:page_size])]
-                col_labels = [name_col, 'Score']
+                col_labels = [name_col, 'Điểm']
             
             table = ax.table(cellText=table_data, colLabels=col_labels,
                           loc='center', cellLoc='center')
@@ -2505,17 +2591,21 @@ def generate_report():
             table.set_fontsize(9)
             table.scale(1, 1.2)
             
+            update_progress(80, "Đang lưu danh sách điểm...")
             pdf.savefig()
             plt.close()
             
             # Tạo thêm trang nếu số học sinh > page_size
             if len(scores_df) > page_size:
                 pages_needed = (len(scores_df) - 1) // page_size + 1
+                progress_per_page = 19 / (pages_needed - 1) if pages_needed > 1 else 0
+                
                 for page in range(1, pages_needed):
+                    update_progress(80 + page * progress_per_page, f"Đang tạo trang danh sách {page+1}/{pages_needed}...")
                     plt.figure(figsize=(10, 12))
                     plt.axis('off')
                     
-                    plt.text(0.5, 0.98, f"STUDENT SCORE LIST (page {page+1}/{pages_needed})", 
+                    plt.text(0.5, 0.98, f"DANH SÁCH ĐIỂM HỌC SINH (trang {page+1}/{pages_needed})", 
                           fontsize=16, ha='center', fontweight='bold')
                     
                     ax = plt.axes([0.05, 0.05, 0.9, 0.85])
@@ -2543,15 +2633,20 @@ def generate_report():
                     
                     pdf.savefig()
                     plt.close()
+            
+            update_progress(100, "Hoàn tất tạo báo cáo!")
         
-        status_label.config(text=f"PDF report created: {os.path.basename(file_path)}", 
+        # Đóng cửa sổ tiến trình sau 1 giây
+        progress_window.after(1000, progress_window.destroy)
+        
+        status_label.config(text=f"Đã tạo báo cáo PDF: {os.path.basename(file_path)}", 
                           style="StatusSuccess.TLabel")
-        messagebox.showinfo("Success", f"PDF report created at:\n{file_path}")
+        messagebox.showinfo("Thành công", f"Đã tạo báo cáo PDF tại:\n{file_path}")
         
     except Exception as e:
-        status_label.config(text=f"Error creating report: {str(e)}", 
+        status_label.config(text=f"Lỗi tạo báo cáo: {str(e)}", 
                           style="StatusCritical.TLabel")
-        messagebox.showerror("Error", f"Cannot create PDF report: {str(e)}")
+        messagebox.showerror("Lỗi", f"Không thể tạo báo cáo PDF: {str(e)}")
         traceback.print_exc()
 
 def show_score_distribution():
@@ -2714,8 +2809,8 @@ root.bind_all("<KeyPress>", update_activity_time)
 # Kiểm tra tự động khóa ứng dụng
 check_auto_lock()
 
-# Kiểm tra cập nhật sau khi khởi động
-root.after(2000, check_updates_async)
+# Kiểm tra cập nhật sau khi khởi động (tăng thời gian delay để đảm bảo giao diện đã được tạo hoàn chỉnh)
+root.after(5000, check_updates_async)
 
 # Chạy ứng dụng
 root.protocol("WM_DELETE_WINDOW", on_closing)

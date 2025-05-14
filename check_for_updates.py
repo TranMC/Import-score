@@ -107,12 +107,12 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                     # Tạo cửa sổ hiển thị tiến trình
                                     progress_window = tk.Toplevel(root)
                                     progress_window.title("Đang tải xuống")
-                                    progress_window.geometry("450x200")
+                                    progress_window.geometry("450x250")
                                     progress_window.transient(root)  # Đặt là cửa sổ con của root
                                     
                                     # Đặt cửa sổ ở giữa màn hình
                                     window_width = 450
-                                    window_height = 200
+                                    window_height = 250
                                     screen_width = root.winfo_screenwidth()
                                     screen_height = root.winfo_screenheight()
                                     position_x = int(screen_width/2 - window_width/2)
@@ -180,8 +180,22 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                                                    font=(config['ui']['font_family'], 10))
                                     download_detail_label.pack(side="right", padx=5)
                                     
+                                    # Label hiển thị tốc độ tải
+                                    speed_label = ttk.Label(progress_window_frame,
+                                                        text="Tốc độ: 0.0 KB/s",
+                                                        font=(config['ui']['font_family'], 10))
+                                    speed_label.pack(anchor="w", pady=2)
+                                    
+                                    # Label hiển thị thời gian còn lại
+                                    time_left_label = ttk.Label(progress_window_frame,
+                                                           text="Thời gian còn lại: ??:??",
+                                                           font=(config['ui']['font_family'], 10))
+                                    time_left_label.pack(anchor="w", pady=2)
+                                    
                                     downloaded = 0
                                     start_time = datetime.now()
+                                    last_update_time = start_time
+                                    last_downloaded = 0
                                     
                                     # Ghi tệp đã tải xuống
                                     with open(temp_file, 'wb') as f:
@@ -190,18 +204,68 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                                 f.write(chunk)
                                                 downloaded += len(chunk)
                                                 
-                                                # Cập nhật tiến trình
-                                                if total_size > 0:
+                                                # Cập nhật tiến trình sau mỗi 0.3 giây
+                                                current_time = datetime.now()
+                                                time_diff = (current_time - last_update_time).total_seconds()
+                                                
+                                                if time_diff >= 0.3 and total_size > 0:
+                                                    # Tính tốc độ tải xuống
+                                                    bytes_since_last = downloaded - last_downloaded
+                                                    speed = bytes_since_last / time_diff  # bytes/second
+                                                    
+                                                    # Định dạng tốc độ
+                                                    if speed < 1024:
+                                                        speed_text = f"{speed:.1f} B/s"
+                                                    elif speed < 1024 * 1024:
+                                                        speed_text = f"{speed/1024:.1f} KB/s"
+                                                    else:
+                                                        speed_text = f"{speed/1024/1024:.1f} MB/s"
+                                                    
+                                                    # Tính thời gian còn lại
+                                                    if speed > 0:
+                                                        bytes_left = total_size - downloaded
+                                                        seconds_left = bytes_left / speed
+                                                        
+                                                        # Định dạng thời gian còn lại
+                                                        if seconds_left < 60:
+                                                            time_left_text = f"{seconds_left:.0f} giây"
+                                                        elif seconds_left < 3600:
+                                                            time_left_text = f"{seconds_left//60:.0f} phút {seconds_left%60:.0f} giây"
+                                                        else:
+                                                            time_left_text = f"{seconds_left//3600:.0f} giờ {(seconds_left%3600)//60:.0f} phút"
+                                                    else:
+                                                        time_left_text = "Đang tính..."
+                                                    
+                                                    # Cập nhật UI
                                                     percent = int(100 * downloaded / total_size)
                                                     progress["value"] = percent
                                                     percent_label.config(text=f"{percent}%")
                                                     download_detail_label.config(text=f"({downloaded/1024/1024:.1f}/{total_size/1024/1024:.1f} MB)")
+                                                    speed_label.config(text=f"Tốc độ: {speed_text}")
+                                                    time_left_label.config(text=f"Thời gian còn lại: {time_left_text}")
                                                     progress_window.update_idletasks()
+                                                    
+                                                    # Cập nhật thời gian/dữ liệu cuối cùng
+                                                    last_update_time = current_time
+                                                    last_downloaded = downloaded
                                     
                                     # Hoàn thành tải xuống
+                                    elapsed_time = (datetime.now() - start_time).total_seconds()
+                                    avg_speed = downloaded / elapsed_time if elapsed_time > 0 else 0
+                                    
+                                    # Định dạng tốc độ trung bình
+                                    if avg_speed < 1024:
+                                        avg_speed_text = f"{avg_speed:.1f} B/s"
+                                    elif avg_speed < 1024 * 1024:
+                                        avg_speed_text = f"{avg_speed/1024:.1f} KB/s"
+                                    else:
+                                        avg_speed_text = f"{avg_speed/1024/1024:.1f} MB/s"
+                                    
                                     progress["value"] = 100
                                     percent_label.config(text="100%")
                                     download_detail_label.config(text=f"({total_size/1024/1024:.1f}/{total_size/1024/1024:.1f} MB)")
+                                    speed_label.config(text=f"Tốc độ trung bình: {avg_speed_text}")
+                                    time_left_label.config(text=f"Đã hoàn thành trong: {int(elapsed_time//60)} phút {int(elapsed_time%60)} giây")
                                     
                                     # Đóng cửa sổ tiến trình sau 1 giây
                                     progress_window.after(1000, progress_window.destroy)
