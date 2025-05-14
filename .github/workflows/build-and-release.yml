@@ -7,6 +7,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  PYTHONIOENCODING: utf-8
+
 jobs:
   build:
     runs-on: windows-latest
@@ -41,7 +44,10 @@ jobs:
         }
     
     - name: Generate version and changelog
+      shell: cmd
       run: |
+        chcp 65001 >nul
+        set PYTHONIOENCODING=utf-8
         python write_log.py
         type version.txt
       
@@ -101,7 +107,7 @@ jobs:
       run: |
         echo "# Quản lý điểm học sinh v$VERSION" > release_description.md
         echo "## Thay đổi trong phiên bản này:" >> release_description.md
-        cat ./artifacts/CHANGELOG.md | grep -A 10 "## Phiên bản $VERSION" | grep -v "^--" >> release_description.md
+        cat ./artifacts/CHANGELOG.md | grep -A 10 "## Version $VERSION" | grep -v "^--" >> release_description.md
         echo -e "\n### Tải về" >> release_description.md
         echo "- Tải về file EXE để cài đặt trực tiếp" >> release_description.md
         cat release_description.md

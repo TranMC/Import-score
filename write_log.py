@@ -6,161 +6,174 @@ import sys
 import traceback
 
 def setup_encoding():
-    # Đảm bảo sử dụng UTF-8 cho output
-    if sys.stdout.encoding != 'utf-8':
-        try:
-            sys.stdout.reconfigure(encoding='utf-8')
-        except AttributeError:
-            # Xử lý trường hợp Python phiên bản cũ không có reconfigure
-            pass
+    """Set up UTF-8 encoding for console output"""
+    try:
+        # Try to force UTF-8 encoding
+        if sys.stdout.encoding != 'utf-8':
+            try:
+                sys.stdout.reconfigure(encoding='utf-8')
+            except (AttributeError, IOError):
+                # For older Python versions or when reconfigure fails
+                pass
+        
+        # Set environment variables to force UTF-8
+        os.environ["PYTHONIOENCODING"] = "utf-8"
+    except Exception as e:
+        print(f"Warning: Failed to set encoding: {str(e)}")
 
 def extract_version():
-    """Trích xuất phiên bản từ file import_score.py"""
+    """Extract version from import_score.py file"""
     try:
         with open("import_score.py", "r", encoding="utf-8") as f:
             content = f.read()
             
-            # Tìm kiếm version trong cấu trúc config
+            # Search for version in config structure
             version_match = re.search(r"'version':\s*'([^']+)'", content)
             if version_match:
                 version = version_match.group(1)
-                print(f"Đã tìm thấy phiên bản: {version}")
+                print(f"Found version: {version}")
                 return version
             else:
-                raise ValueError("Version không tìm thấy trong import_score.py")
+                raise ValueError("Version not found in import_score.py")
     except Exception as e:
-        print(f"Lỗi khi đọc version: {str(e)}")
-        print(f"Chi tiết lỗi: {traceback.format_exc()}")
+        print(f"Error reading version: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
         return "unknown"
 
 def write_version_file(version):
-    """Ghi phiên bản vào file version.txt để CI/CD sử dụng"""
+    """Write version to version.txt file for CI/CD use"""
     try:
         with open("version.txt", "w", encoding="utf-8") as f:
             f.write(version)
-        print(f"Đã ghi phiên bản {version} vào version.txt")
+        print(f"Wrote version {version} to version.txt")
         return True
     except Exception as e:
-        print(f"Lỗi khi ghi version.txt: {str(e)}")
+        print(f"Error writing version.txt: {str(e)}")
         return False
 
 def extract_changelog(version):
-    """Trích xuất changelog từ file import_score.py"""
+    """Extract changelog from import_score.py file"""
     try:
         with open("import_score.py", "r", encoding="utf-8") as f:
             content = f.read()
-            print("Đang tìm changelog...")
+            print("Searching for changelog...")
             
-            # Tìm changelog cụ thể cho phiên bản hiện tại trong config
+            # Find specific changelog for current version in config
             changelog_section = re.search(r"'changelog'\s*:\s*{([^}]*)}", content, re.DOTALL)
             
             if changelog_section:
                 changelog_dict_text = '{' + changelog_section.group(1) + '}'
-                # Chuyển đổi text thành json-compatible
+                # Convert text to json-compatible
                 changelog_dict_text = changelog_dict_text.replace("'", '"')
                 
-                # Tìm và xử lý phiên bản hiện tại
+                # Find and process current version
                 version_pattern = f'"{version}"\\s*:\\s*\\[(.*?)\\]'
                 version_changelog_match = re.search(version_pattern, changelog_dict_text, re.DOTALL)
                 
                 if version_changelog_match:
-                    # Lấy nội dung changelog
+                    # Get changelog content
                     version_changelog_text = version_changelog_match.group(1)
-                    # Tách các mục changelog
+                    # Split changelog items
                     changelog_items = re.findall(r'"([^"]*)"', version_changelog_text)
                     if changelog_items:
                         changelog = "\n- " + "\n- ".join(changelog_items)
-                        print(f"Đã tìm thấy {len(changelog_items)} mục changelog")
+                        print(f"Found {len(changelog_items)} changelog items")
                         return changelog
                     else:
-                        print("Không tìm thấy chi tiết changelog")
-                        return "Không có thông tin changelog chi tiết"
+                        print("No changelog details found")
+                        return "No detailed changelog information"
                 else:
-                    print(f"Không tìm thấy changelog cho phiên bản {version}")
-                    return f"Không tìm thấy changelog cho phiên bản {version}"
+                    print(f"No changelog found for version {version}")
+                    return f"No changelog found for version {version}"
             else:
-                print("Không tìm thấy phần changelog trong config")
-                return "Không tìm thấy phần changelog trong config"
+                print("No changelog section found in config")
+                return "No changelog section found in config"
                 
     except Exception as e:
-        print(f"Lỗi khi đọc changelog: {str(e)}")
-        print(f"Chi tiết lỗi: {traceback.format_exc()}")
-        return f"Lỗi khi đọc changelog: {str(e)}"
+        print(f"Error reading changelog: {str(e)}")
+        print(f"Error details: {traceback.format_exc()}")
+        return f"Error reading changelog: {str(e)}"
 
 def update_changelog_file(version, changelog):
-    """Cập nhật file CHANGELOG.md với thông tin phiên bản mới"""
+    """Update CHANGELOG.md file with new version information"""
     now = datetime.datetime.now()
     
-    # Tạo nội dung mới với định dạng markdown
-    new_entry = f"## Phiên bản {version}\n"
-    new_entry += f"### Ngày: {now.strftime('%d/%m/%Y %H:%M:%S')}\n"
-    new_entry += f"### Thay đổi:{changelog}\n"
+    # Create new content with markdown format
+    new_entry = f"## Version {version}\n"
+    new_entry += f"### Date: {now.strftime('%d/%m/%Y %H:%M:%S')}\n"
+    new_entry += f"### Changes:{changelog}\n"
     new_entry += "\n" + "-" * 50 + "\n"
 
-    # Đọc nội dung hiện tại nếu file đã tồn tại
+    # Read existing content if file exists
     existing_content = ""
     version_exists = False
     if os.path.exists("CHANGELOG.md"):
         try:
             with open("CHANGELOG.md", "r", encoding="utf-8") as f:
                 existing_content = f.read()
-                print("Đọc file CHANGELOG.md hiện tại")
-                # Tìm phiên bản trong nội dung
-                if f"## Phiên bản {version}" in existing_content or f"Build Version: {version}" in existing_content:
+                print("Reading existing CHANGELOG.md file")
+                # Find version in content
+                if f"## Version {version}" in existing_content or f"## Phiên bản {version}" in existing_content:
                     version_exists = True
-                    print(f"Phiên bản {version} đã tồn tại trong file")
+                    print(f"Version {version} already exists in file")
         except Exception as e:
-            print(f"Lỗi khi đọc CHANGELOG.md: {str(e)}")
-            print(f"Chi tiết lỗi: {traceback.format_exc()}")
+            print(f"Error reading CHANGELOG.md: {str(e)}")
+            print(f"Error details: {traceback.format_exc()}")
     else:
-        print("File CHANGELOG.md chưa tồn tại, sẽ tạo mới")
+        print("CHANGELOG.md file does not exist, will create new")
 
-    # Kiểm tra xem phiên bản này đã được ghi chưa
+    # Check if this version has already been written
     if version_exists:
-        print(f"Phiên bản {version} đã tồn tại trong CHANGELOG.md, không ghi lại")
+        print(f"Version {version} already exists in CHANGELOG.md, won't write again")
         return False
     else:
-        # Nếu file chưa tồn tại, thêm tiêu đề
+        # If file doesn't exist, add title
         if not os.path.exists("CHANGELOG.md") or not existing_content:
-            header = "# Lịch sử thay đổi\n\n"
+            header = "# Change History\n\n"
             new_entry = header + new_entry
-            print("Thêm tiêu đề vào CHANGELOG mới")
+            print("Adding title to new CHANGELOG")
         
-        # Ghi nội dung mới + nội dung cũ
+        # Write new content + old content
         try:
             with open("CHANGELOG.md", "w", encoding="utf-8") as f:
                 f.write(new_entry)
                 if existing_content:
                     f.write(existing_content)
             
-            print(f"Đã cập nhật CHANGELOG.md với phiên bản {version}")
+            print(f"Updated CHANGELOG.md with version {version}")
             return True
         except Exception as e:
-            print(f"Lỗi khi ghi CHANGELOG.md: {str(e)}")
-            print(f"Chi tiết lỗi: {traceback.format_exc()}")
+            print(f"Error writing CHANGELOG.md: {str(e)}")
+            print(f"Error details: {traceback.format_exc()}")
             return False
 
 def main():
-    """Hàm chính điều phối toàn bộ quá trình"""
-    print("Bắt đầu tạo log phiên bản...")
+    """Main function coordinating the entire process"""
+    print("Starting version log creation...")
     
-    # Thiết lập mã hóa UTF-8
+    # Set up UTF-8 encoding
     setup_encoding()
     
-    # Trích xuất phiên bản
+    # Extract version
     version = extract_version()
     
-    # Ghi phiên bản vào file version.txt
+    # Write version to version.txt
     write_version_file(version)
     
-    # Trích xuất changelog
+    # Extract changelog
     changelog = extract_changelog(version)
     
-    # Cập nhật file CHANGELOG.md
+    # Update CHANGELOG.md file
     update_changelog_file(version, changelog)
     
-    print("Hoàn thành!")
+    print("Completed!")
     return 0
 
 if __name__ == "__main__":
+    # Force ASCII output for error messages to avoid encoding issues
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except (AttributeError, IOError):
+        pass
+        
     sys.exit(main())

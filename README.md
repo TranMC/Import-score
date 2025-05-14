@@ -16,7 +16,7 @@
 
 ### Sử dụng file EXE (Windows)
 
-1. Tải file EXE mới nhất từ [trang Releases](https://github.com/yourusername/yourrepo/releases)
+1. Tải file EXE mới nhất từ [trang Releases](https://github.com/TranMC/Import-score/releases)
 2. Chạy file để sử dụng ứng dụng
 
 ### Phát triển (Development)
@@ -32,12 +32,6 @@ python import_score.py
 python build_optimized.py
 ```
 
-## Yêu cầu hệ thống
-
-- Windows 10/11 (Khuyến nghị)
-- Python 3.9 trở lên (cho phát triển)
-- 4GB RAM trở lên
-
 ## Tự động triển khai (CI/CD)
 
 Dự án sử dụng GitHub Actions để tự động:
@@ -49,7 +43,3 @@ Dự án sử dụng GitHub Actions để tự động:
 ## Phiên bản
 
 Xem lịch sử phiên bản và thay đổi trong [CHANGELOG.md](CHANGELOG.md)
-
-## Đóng góp
-
-Mọi đóng góp cho dự án đều được chào đón. Vui lòng tạo issue hoặc pull request để đề xuất cải tiến.
