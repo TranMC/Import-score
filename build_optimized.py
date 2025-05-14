@@ -1,6 +1,9 @@
-import PyInstaller.__main__
 import os
 import sys
+import subprocess
+import py_compile
+
+print("Quá trình build bắt đầu...")
 
 # Đọc phiên bản từ version.txt
 try:
@@ -10,6 +13,29 @@ except:
     version = "4.0"  # Phiên bản mặc định nếu không đọc được
 
 print(f"Building version: {version}")
+
+# Kiểm tra Python bytecode trước khi build
+print("Kiểm tra lỗi cú pháp trong mã nguồn...")
+try:
+    py_compile.compile("import_score.py", doraise=True)
+    py_compile.compile("write_log.py", doraise=True)
+    print("Không tìm thấy lỗi cú pháp trong mã nguồn.")
+except py_compile.PyCompileError as e:
+    print(f"Lỗi cú pháp trong mã nguồn: {str(e)}")
+    print("Vui lòng sửa lỗi trước khi tiếp tục.")
+    sys.exit(1)
+
+# Kiểm tra và cài đặt PyInstaller nếu chưa cài đặt
+try:
+    import PyInstaller.__main__
+except ImportError:
+    print("PyInstaller chưa được cài đặt. Đang cài đặt...")
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "PyInstaller>=5.13.0"])
+        import PyInstaller.__main__
+    except Exception as e:
+        print(f"Không thể cài đặt PyInstaller: {str(e)}")
+        sys.exit(1)
 
 # Separator tuỳ hệ điều hành
 sep = ';' if os.name == 'nt' else ':'
@@ -46,7 +72,7 @@ options = [
     '--exclude-module=xml.dom.domreg',
     '--exclude-module=pycparser',
     '--exclude-module=sqlite3',
-    f'--add-data={data_file}{sep}.',  # ✅ sửa lỗi dấu phân tách ở đây
+    f'--add-data={data_file}{sep}.',
     '--upx-dir=upx',
     '--hidden-import=pandas._libs.tslibs.base',
     '--hidden-import=pandas._libs.tslibs.np_datetime',
@@ -54,7 +80,10 @@ options = [
 ]
 
 # Chạy PyInstaller với các options tối ưu
-print(f"Running PyInstaller with options: {options}")
-PyInstaller.__main__.run(options)
-
-print(f"Build completed. Check the dist folder for the executable.")
+print(f"Chạy PyInstaller với các tùy chọn: {options}")
+try:
+    PyInstaller.__main__.run(options)
+    print(f"Build hoàn thành. Kiểm tra thư mục dist để xem file thực thi.")
+except Exception as e:
+    print(f"Lỗi khi build: {str(e)}")
+    sys.exit(1)
