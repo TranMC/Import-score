@@ -1,0 +1,121 @@
+name: Build và Release
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Check for errors in script
+      run: |
+        python -m py_compile import_score.py write_log.py build_optimized.py
+        if ($LASTEXITCODE -ne 0) {
+          echo "Compilation check failed"
+          exit 1
+        }
+    
+    - name: Generate version and changelog
+      run: |
+        python write_log.py
+        type version.txt
+      
+    - name: Read version
+      id: version
+      run: |
+        $VERSION = Get-Content version.txt
+        echo "VERSION=$VERSION" >> $env:GITHUB_ENV
+      shell: pwsh
+    
+    - name: Build executable
+      run: |
+        python build_optimized.py
+        dir dist
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: dist-files
+        path: |
+          dist/
+          version.txt
+          CHANGELOG.md
+        retention-days: 7
+    
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download build artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: dist-files
+        path: ./artifacts
+    
+    - name: List downloaded artifacts
+      run: |
+        find ./artifacts -type f -name "*.exe" | sort
+        echo "Found files:"
+        ls -la ./artifacts/
+        VERSION=$(cat ./artifacts/version.txt)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Found version: $VERSION"
+      shell: bash
+    
+    - name: Prepare release files
+      run: |
+        mkdir -p release_files
+        find ./artifacts -type f -name "*.exe" -exec cp {} ./release_files/ \;
+        ls -la ./release_files/
+      shell: bash
+        
+    - name: Create release description
+      run: |
+        echo "# Quản lý điểm học sinh v$VERSION" > release_description.md
+        echo "## Thay đổi trong phiên bản này:" >> release_description.md
+        cat ./artifacts/CHANGELOG.md | grep -A 10 "## Phiên bản $VERSION" | grep -v "^--" >> release_description.md
+        echo -e "\n### Tải về" >> release_description.md
+        echo "- Tải về file EXE để cài đặt trực tiếp" >> release_description.md
+        cat release_description.md
+      shell: bash
+        
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ./release_files/*.exe
+        tag_name: v${{ env.VERSION }}
+        name: Quản lý điểm học sinh v${{ env.VERSION }}
+        body_path: ./release_description.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
