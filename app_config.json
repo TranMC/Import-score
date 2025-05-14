@@ -1,0 +1,20 @@
+{
+    "max_questions": 40,
+    "score_per_question": 0.25,
+    "exam_codes": [
+        "701",
+        "702",
+        "703",
+        "704"
+    ],
+    "shortcuts": {
+        "search": "<Control-f>",
+        "direct_score": "<Control-g>",
+        "undo": "<Control-z>"
+    },
+    "columns": {
+        "name": "Tên Học Sinh",
+        "exam_code": "Mã Đề",
+        "score": "Điểm"
+    }
+}
