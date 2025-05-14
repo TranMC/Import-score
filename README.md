@@ -42,4 +42,4 @@ Dự án sử dụng GitHub Actions để tự động:
 
 ## Phiên bản
 
-Xem lịch sử phiên bản và thay đổi trong [CHANGELOG.md](CHANGELOG.md)
+Xem lịch sử phiên bản và thay đổi trong [CHANGELOG](CHANGELOG.md)

@@ -138,6 +138,7 @@ config = {
 
 # Biến toàn cục
 root = tk.Tk()
+root.title("Quản lí điểm học sinh")
 df = None
 file_path = None
 undo_stack = []
@@ -1786,28 +1787,36 @@ def refresh_ui():
         tree.insert('', 'end', values=("Không có dữ liệu để hiển thị. Vui lòng tải file Excel.", "", ""))
 
 def verify_required_columns(dataframe):
-    """Kiểm tra và xác minh các cột bắt buộc trong DataFrame"""
-    if dataframe is None or dataframe.empty:
-        return
+    """Kiểm tra xem dataframe có các cột cần thiết không"""
+    # Kiểm tra dataframe có tồn tại không
+    if dataframe is None:
+        messagebox.showerror("Lỗi", "Dữ liệu trống, vui lòng kiểm tra lại file Excel.")
+        return False
         
+    # Kiểm tra dataframe có rỗng không
+    if dataframe.empty:
+        messagebox.showerror("Lỗi", "Dữ liệu trống, vui lòng kiểm tra lại file Excel.")
+        return False
+
+    # Lấy tên các cột cần thiết từ config
+    required_names = config['columns'].values()
+    
+    # Danh sách cột bị thiếu
     missing_columns = []
-    name_col = find_matching_column(dataframe, config['columns']['name'])
-    if not name_col:
-        missing_columns.append(config['columns']['name'])
-        
-    score_col = find_matching_column(dataframe, config['columns']['score'])
-    if not score_col and 'Điểm' not in dataframe.columns:
-        missing_columns.append(config['columns']['score'])
-        
-    if 'Mã đề' not in dataframe.columns:
-        # Tự động thêm cột Mã đề nếu không có
-        dataframe['Mã đề'] = None
-        
+    
+    # Kiểm tra từng cột
+    for column_name in required_names:
+        if column_name not in dataframe.columns:
+            missing_columns.append(column_name)
+    
+    # Nếu có cột bị thiếu
     if missing_columns:
-        messagebox.showwarning(            "Thiếu cột dữ liệu", 
-            f"Không tìm thấy các cột sau: {', '.join(missing_columns)}.\n\n"
-            "Vui lòng kiểm tra lại file Excel hoặc điều chỉnh tên cột trong cài đặt."
-        )
+        messagebox.showerror("Thiếu cột dữ liệu", 
+                            f"File Excel thiếu các cột sau: {', '.join(missing_columns)}.\n\n"
+                            f"Vui lòng kiểm tra lại tên cột hoặc cấu hình tên cột trong ứng dụng.")
+        return False
+    
+    return True
 
 def create_ui():
     global status_label, entry_student_name, tree
@@ -2188,7 +2197,7 @@ def check_for_updates(show_notification=True):
                                 import webbrowser
                                 webbrowser.open(download_url)
                             else:
-                                webbrowser.open(f"https://gitlab.com/YOUR_USERNAME/YOUR_PROJECT/-/releases")
+                                webbrowser.open(f"https://gitlab.com/TranMC/Import-score/-/releases")
                     
                     if 'file_path' in globals() and file_path:
                         status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
@@ -2236,334 +2245,60 @@ def check_updates_async():
     threading.Thread(target=check_for_updates, daemon=True).start()
 
 def update_stats():
-    """Cập nhật thống kê số học sinh có điểm"""
-    global df, stats_label
-    
-    if df is None or 'stats_label' not in globals() or stats_label is None:
+    """Cập nhật các thống kê cơ bản"""
+    if df is None or df.empty:
+        stats_label.config(text="Không có dữ liệu để hiển thị thống kê")
         return
         
-    try:
-        # Tính toán số học sinh có điểm
-        total_students = len(df)
-        if 'Điểm' in df.columns:
-            students_with_scores = df['Điểm'].notna().sum()
-            stats_label.config(text=f"{students_with_scores}/{total_students} học sinh có điểm")
-        else:
-            stats_label.config(text=f"0/{total_students} học sinh có điểm")
-    except Exception as e:
-        print(f"Lỗi khi cập nhật thống kê: {str(e)}")
+    total_students = len(df)
+    score_column = config['columns']['score']
+    
+    # Đếm số học sinh có điểm
+    students_with_scores = df[score_column].notna().sum()
+    
+    # Hiển thị thông tin
+    stats_text = f"Tổng số học sinh: {total_students} | Đã có điểm: {students_with_scores} ({students_with_scores/total_students:.1%})"
+    stats_label.config(text=stats_text)
 
 def update_score_extremes():
-    """Cập nhật thông tin điểm cao nhất và thấp nhất"""
-    global df, highest_score_label, lowest_score_label
-    
-    if df is None or 'highest_score_label' not in globals() or highest_score_label is None:
+    """Cập nhật điểm cao nhất và thấp nhất"""
+    if df is None or df.empty:
+        highest_score_label.config(text="Điểm cao nhất: N/A")
+        lowest_score_label.config(text="Điểm thấp nhất: N/A")
         return
         
-    try:
-        if 'Điểm' in df.columns and not df.empty:
-            # Lọc chỉ lấy những điểm số không rỗng
-            scores = df[df['Điểm'].notna()]['Điểm']
-            
-            if not scores.empty:
-                highest = scores.max()
-                lowest = scores.min()
-                
-                highest_score_label.config(text=f"Cao nhất: {highest:.2f}")
-                lowest_score_label.config(text=f"Thấp nhất: {lowest:.2f}")
-            else:
-                highest_score_label.config(text="Cao nhất: N/A")
-                lowest_score_label.config(text="Thấp nhất: N/A")
-        else:
-            highest_score_label.config(text="Cao nhất: N/A")
-            lowest_score_label.config(text="Thấp nhất: N/A")
-    except Exception as e:
-        print(f"Lỗi khi cập nhật điểm cao/thấp: {str(e)}")
-        highest_score_label.config(text="Cao nhất: N/A")
-        lowest_score_label.config(text="Thấp nhất: N/A")
+    score_column = config['columns']['score']
+    name_column = config['columns']['name']
+    
+    # Lọc các hàng có điểm không phải NaN
+    df_with_scores = df[df[score_column].notna()]
+    
+    # Nếu không có ai có điểm
+    if df_with_scores.empty:
+        highest_score_label.config(text="Điểm cao nhất: N/A")
+        lowest_score_label.config(text="Điểm thấp nhất: N/A")
+        return
+    
+    # Tìm điểm cao nhất
+    max_score = df_with_scores[score_column].max()
+    max_students = df_with_scores[df_with_scores[score_column] == max_score][name_column].tolist()
+    max_students_text = ", ".join(max_students[:3])
+    if len(max_students) > 3:
+        max_students_text += f" và {len(max_students) - 3} học sinh khác"
+    
+    # Tìm điểm thấp nhất
+    min_score = df_with_scores[score_column].min()
+    min_students = df_with_scores[df_with_scores[score_column] == min_score][name_column].tolist()
+    min_students_text = ", ".join(min_students[:3])
+    if len(min_students) > 3:
+        min_students_text += f" và {len(min_students) - 3} học sinh khác"
+    
+    # Cập nhật giao diện
+    highest_score_label.config(text=f"Điểm cao nhất: {max_score} ({max_students_text})")
+    lowest_score_label.config(text=f"Điểm thấp nhất: {min_score} ({min_students_text})")
 
 def delayed_search(event=None):
     """Tìm kiếm sau một khoảng thời gian để tránh quá nhiều tìm kiếm liên tiếp"""
-    global search_timer_id
-    
-    # Hủy timer cũ nếu có
-    if search_timer_id:
-        root.after_cancel(search_timer_id)
-    
-    # Đặt timer mới
-    search_timer_id = root.after(300, search_student)
-
-def focus_correct_count(event=None):
-    """Di chuyển con trỏ đến ô số câu đúng"""
-    global entry_correct_count
-    
-    if 'entry_correct_count' in globals() and entry_correct_count is not None:
-        entry_correct_count.focus_set()
-        entry_correct_count.select_range(0, tk.END)
-
-def save_config():
-    """Lưu cấu hình ra file"""
-    global config
-    
-    try:
-        config_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(config_dir, "config.json")
-        
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, ensure_ascii=False, indent=4)
-            
-        print(f"Đã lưu cấu hình vào {config_path}")
-    except Exception as e:
-        print(f"Lỗi khi lưu cấu hình: {str(e)}")
-        messagebox.showerror("Lỗi", f"Không thể lưu cấu hình: {str(e)}")
-
-def encrypt_data(data_str, password):
-    """
-    Mã hóa dữ liệu với mật khẩu
-    
-    Args:
-        data_str (str): Chuỗi dữ liệu cần mã hóa
-        password (str): Mật khẩu dùng để mã hóa
-        
-    Returns:
-        tuple: (encrypted_data, salt) - Dữ liệu đã mã hóa và salt được sử dụng
-    """
-    # Tạo salt ngẫu nhiên
-    salt = os.urandom(16)
-    
-    # Tạo khóa từ mật khẩu và salt
-    kdf = PBKDF2HMAC(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=salt,
-        iterations=100000,
-    )
-    
-    key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
-    
-    # Mã hóa dữ liệu
-    f = Fernet(key)
-    encrypted_data = f.encrypt(data_str.encode())
-    
-    return encrypted_data, salt
-
-def generate_report():
-    """Tạo báo cáo PDF với thống kê và biểu đồ phân phối điểm"""
-    global df
-    
-    if df is None or df.empty:
-        messagebox.showinfo("Thông báo", "Chưa có dữ liệu để tạo báo cáo")
-        return
-        
-    try:
-        # Yêu cầu người dùng chọn vị trí lưu file
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf")],
-            title="Lưu báo cáo PDF"
-        )
-        
-        if not file_path:
-            return  # Người dùng đã hủy
-        
-        # Hiển thị thông báo đang tạo báo cáo
-        status_label.config(text="Đang tạo báo cáo PDF...", style="StatusWarning.TLabel")
-        root.update()
-        
-        # Tạo PDF với matplotlib
-        with PdfPages(file_path) as pdf:
-            # Trang 1: Thông tin chung
-            plt.figure(figsize=(8.27, 11.69))  # A4 size in inches
-            plt.axis('off')
-            
-            title = "BÁO CÁO THỐNG KÊ ĐIỂM SỐ"
-            plt.text(0.5, 0.95, title, fontsize=16, ha='center', fontweight='bold')
-            
-            # Thời gian tạo báo cáo
-            now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-            plt.text(0.5, 0.9, f"Thời gian: {now}", fontsize=10, ha='center')
-            
-            # Thông tin file nguồn
-            source_file = os.path.basename(file_path) if file_path else "N/A"
-            plt.text(0.5, 0.85, f"Nguồn dữ liệu: {source_file}", fontsize=10, ha='center')
-            
-            # Thống kê cơ bản
-            total = len(df)
-            has_score = df['Điểm'].notna().sum() if 'Điểm' in df.columns else 0
-            
-            stats_text = f"""
-            Tổng số học sinh: {total}
-            Số học sinh có điểm: {has_score}
-            Tỷ lệ có điểm: {has_score/total*100:.1f}%
-            """
-            
-            plt.text(0.1, 0.75, stats_text, fontsize=12)
-            
-            # Thêm thống kê điểm số nếu có
-            if 'Điểm' in df.columns and has_score > 0:
-                scores = df[df['Điểm'].notna()]['Điểm']
-                
-                score_stats = f"""
-                Điểm trung bình: {scores.mean():.2f}
-                Điểm cao nhất: {scores.max():.2f}
-                Điểm thấp nhất: {scores.min():.2f}
-                Độ lệch chuẩn: {scores.std():.2f}
-                """
-                
-                plt.text(0.1, 0.6, score_stats, fontsize=12)
-                
-                # Thêm thống kê phân loại
-                pass_threshold = 5.0  # Ngưỡng đạt/không đạt
-                passed = (scores >= pass_threshold).sum()
-                failed = has_score - passed
-                
-                classification = f"""
-                Số học sinh đạt (≥ 5.0): {passed} ({passed/has_score*100:.1f}%)
-                Số học sinh chưa đạt (< 5.0): {failed} ({failed/has_score*100:.1f}%)
-                """
-                
-                plt.text(0.1, 0.45, classification, fontsize=12)
-                
-            pdf.savefig()
-            plt.close()
-            
-            # Trang 2: Biểu đồ phân phối điểm
-            if 'Điểm' in df.columns and has_score > 0:
-                plt.figure(figsize=(8.27, 11.69))
-                
-                # Biểu đồ phân phối điểm số
-                plt.subplot(2, 1, 1)
-                scores = df[df['Điểm'].notna()]['Điểm']
-                
-                # Histogram
-                plt.hist(scores, bins=10, alpha=0.7, color='blue', edgecolor='black')
-                plt.title('Phân phối điểm số')
-                plt.xlabel('Điểm')
-                plt.ylabel('Số học sinh')
-                plt.grid(True, alpha=0.3)
-                
-                # Thêm giá trị trung bình
-                plt.axvline(scores.mean(), color='red', linestyle='dashed', linewidth=1)
-                plt.text(scores.mean() + 0.1, plt.ylim()[1]*0.9, f'TB: {scores.mean():.2f}', color='red')
-                
-                # Biểu đồ tròn tỷ lệ đạt/không đạt
-                plt.subplot(2, 1, 2)
-                pass_threshold = 5.0
-                passed = (scores >= pass_threshold).sum()
-                failed = has_score - passed
-                
-                labels = ['Đạt (≥ 5.0)', 'Chưa đạt (< 5.0)']
-                sizes = [passed, failed]
-                colors = ['#66b3ff', '#ff9999']
-                
-                plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-                plt.axis('equal')
-                plt.title('Tỷ lệ học sinh đạt/không đạt')
-                
-                pdf.savefig()
-                plt.close()
-                
-                # Trang 3: Biểu đồ theo thang điểm
-                plt.figure(figsize=(8.27, 11.69))
-                
-                # Thang điểm
-                score_ranges = [
-                    (0, 3, 'Yếu'),
-                    (3, 5, 'Kém'),
-                    (5, 7, 'Trung bình'),
-                    (7, 8, 'Khá'),
-                    (8, 9, 'Giỏi'),
-                    (9, 10.1, 'Xuất sắc')  # 10.1 để bao gồm cả 10
-                ]
-                
-                # Đếm số học sinh trong mỗi thang điểm
-                labels = [item[2] for item in score_ranges]
-                counts = []
-                
-                for low, high, _ in score_ranges:
-                    count = ((scores >= low) & (scores < high)).sum()
-                    counts.append(count)
-                
-                # Biểu đồ cột
-                plt.subplot(2, 1, 1)
-                bars = plt.bar(labels, counts, color='skyblue', edgecolor='black')
-                
-                # Thêm số lượng lên đầu mỗi cột
-                for bar, count in zip(bars, counts):
-                    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
-                           str(count), ha='center')
-                
-                plt.title('Phân loại học sinh theo thang điểm')
-                plt.xlabel('Thang điểm')
-                plt.ylabel('Số học sinh')
-                plt.grid(True, alpha=0.3, axis='y')
-                
-                # Biểu đồ tròn
-                plt.subplot(2, 1, 2)
-                plt.pie(counts, labels=labels, autopct='%1.1f%%', startangle=90)
-                plt.axis('equal')
-                plt.title('Tỷ lệ học sinh theo thang điểm')
-                
-                pdf.savefig()
-                plt.close()
-                
-                # Thêm bảng dữ liệu nếu cần
-                if total <= 50:  # Chỉ hiển thị bảng nếu không quá nhiều học sinh
-                    fig, ax = plt.subplots(figsize=(8.27, 11.69))
-                    ax.axis('tight')
-                    ax.axis('off')
-                    
-                    # Chọn các cột cần hiển thị
-                    display_cols = []
-                    if config['columns']['name'] in df.columns:
-                        display_cols.append(config['columns']['name'])
-                    if 'Mã đề' in df.columns:
-                        display_cols.append('Mã đề')
-                    if 'Điểm' in df.columns:
-                        display_cols.append('Điểm')
-                        
-                    # Sắp xếp theo điểm giảm dần
-                    sorted_df = df.sort_values(by='Điểm', ascending=False)
-                    
-                    # Hiển thị tên cột phù hợp
-                    col_labels = display_cols.copy()
-                    
-                    # Chỉ lấy học sinh có điểm và các cột cần thiết
-                    display_data = sorted_df[sorted_df['Điểm'].notna()][display_cols].head(50)
-                    
-                    # Tạo bảng
-                    table = ax.table(cellText=display_data.values, 
-                                   colLabels=col_labels,
-                                   loc='center', 
-                                   cellLoc='center')
-                    
-                    # Định dạng bảng
-                    table.auto_set_font_size(False)
-                    table.set_fontsize(9)
-                    table.scale(1, 1.5)
-                    
-                    plt.title('Danh sách học sinh có điểm (sắp xếp theo điểm giảm dần)', pad=20)
-                    
-                    pdf.savefig()
-                    plt.close()
-        
-        # Hiển thị thông báo thành công
-        status_label.config(text=f"Đã tạo báo cáo: {os.path.basename(file_path)}", style="StatusSuccess.TLabel")
-        messagebox.showinfo("Thành công", f"Đã tạo báo cáo PDF tại:\n{file_path}")
-        
-    except Exception as e:
-        status_label.config(text=f"Lỗi khi tạo báo cáo: {str(e)[:50]}", style="StatusCritical.TLabel")
-        messagebox.showerror("Lỗi", f"Không thể tạo báo cáo PDF:\n{str(e)}")
-        traceback.print_exc()
-
-def show_score_distribution():
-    """Hiển thị biểu đồ phân phối điểm số trong cửa sổ mới"""
-    global df
-    
-    if df is None or df.empty:
-        messagebox.showinfo("Thông báo", "Chưa có dữ liệu để hiển thị biểu đồ")
-        return
-    
     if 'Điểm' not in df.columns:
         messagebox.showinfo("Thông báo", "Không có cột điểm trong dữ liệu")
         return
