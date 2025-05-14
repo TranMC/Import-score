@@ -1,4 +1,7 @@
-{   "2.3.1":[
+{   "2.3.2":[
+        "Small update để fix app run bởi github runner"
+],
+    "2.3.1":[
         "Thêm thanh progress bar khi download file update",
         "Thêm tiến trình tạo pdf"
 ],

@@ -678,37 +678,25 @@ def read_excel_normally(file_path):
     root.update()
     
     try:
-        # Đọc 10 dòng đầu để phân tích header với engine openpyxl
+        # Thử đọc với engine openpyxl trước
         headers_df = pd.read_excel(file_path, nrows=10, engine='openpyxl')
         
-        # Tìm hàng chứa header
-        header_row = None
-        for i in range(len(headers_df)):
-            row_values = headers_df.iloc[i].astype(str)
-            if any(name.lower() in ' '.join(row_values.str.lower()) 
-                  for name in ['họ và tên', 'tên học sinh', 'học sinh']):
-                header_row = i
-                break
+        # Tìm hàng chứa header thực sự
+        header_row = find_header_row(headers_df)
         
-        # Nếu không tìm thấy header phù hợp, dùng hàng đầu tiên
-        if header_row is None:
-            header_row = 0
-            
-        # Đọc file với header đúng và engine openpyxl
+        # Đọc lại với header đúng
         df_result = pd.read_excel(file_path, header=header_row, engine='openpyxl')
+        return df_result
+    except ImportError:
+        # Nếu không có openpyxl, thử dùng engine mặc định
+        print("Không tìm thấy openpyxl, sử dụng engine mặc định...")
+        headers_df = pd.read_excel(file_path, nrows=10)
         
-        # Xử lý trường hợp DataFrame rỗng
-        if df_result.empty:
-            status_label.config(text="File Excel không có dữ liệu", style="StatusCritical.TLabel")
-            return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+        # Tìm hàng chứa header thực sự
+        header_row = find_header_row(headers_df)
         
-        # Đảm bảo các cột cần thiết tồn tại
-        df_result = ensure_required_columns(df_result)
-        
-        # Đảm bảo kiểu dữ liệu phù hợp
-        df_result = ensure_proper_dtypes(df_result)
-        
-        status_label.config(text=f"Đã đọc xong file Excel", style="StatusSuccess.TLabel")
+        # Đọc lại với header đúng
+        df_result = pd.read_excel(file_path, header=header_row)
         return df_result
     except Exception as e:
         print(f"Chi tiết lỗi đọc file Excel: {traceback.format_exc()}")
@@ -2766,6 +2754,82 @@ def focus_correct_count(event=None):
     """Di chuyển con trỏ đến ô nhập số câu đúng"""
     entry_correct_count.focus_set()
     entry_correct_count.select_range(0, tk.END)
+
+def find_header_row(headers_df):
+    """Tìm hàng chứa header thực sự trong DataFrame."""
+    header_row = None
+    for i in range(len(headers_df)):
+        row_values = headers_df.iloc[i].astype(str)
+        if any(name.lower() in ' '.join(row_values.str.lower()) 
+              for name in ['họ và tên', 'tên học sinh', 'học sinh']):
+            header_row = i
+            break
+    
+    # Nếu không tìm thấy header phù hợp, dùng hàng đầu tiên
+    if header_row is None:
+        header_row = 0
+    
+    return header_row
+
+def read_excel_file(file_path):
+    """Đọc file Excel theo cách thông thường"""
+    status_label.config(text=f"Đang đọc file Excel...", style="StatusWarning.TLabel")
+    root.update()
+    
+    try:
+        # Thử đọc với engine openpyxl trước
+        headers_df = pd.read_excel(file_path, nrows=10, engine='openpyxl')
+        
+        # Tìm hàng chứa header thực sự
+        header_row = find_header_row(headers_df)
+        
+        # Đọc lại với header đúng
+        df_result = pd.read_excel(file_path, header=header_row, engine='openpyxl')
+        
+        # Xử lý trường hợp DataFrame rỗng
+        if df_result.empty:
+            status_label.config(text="File Excel không có dữ liệu", style="StatusCritical.TLabel")
+            return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+        
+        # Đảm bảo các cột cần thiết tồn tại
+        df_result = ensure_required_columns(df_result)
+        
+        # Đảm bảo kiểu dữ liệu phù hợp
+        df_result = ensure_proper_dtypes(df_result)
+        
+        status_label.config(text=f"Đã đọc xong file Excel", style="StatusSuccess.TLabel")
+        return df_result
+        
+    except ImportError:
+        # Nếu không có openpyxl, thử dùng engine mặc định
+        print("Không tìm thấy openpyxl, sử dụng engine mặc định...")
+        headers_df = pd.read_excel(file_path, nrows=10)
+        
+        # Tìm hàng chứa header thực sự
+        header_row = find_header_row(headers_df)
+        
+        # Đọc lại với header đúng
+        df_result = pd.read_excel(file_path, header=header_row)
+        
+        # Xử lý trường hợp DataFrame rỗng
+        if df_result.empty:
+            status_label.config(text="File Excel không có dữ liệu", style="StatusCritical.TLabel")
+            return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+        
+        # Đảm bảo các cột cần thiết tồn tại
+        df_result = ensure_required_columns(df_result)
+        
+        # Đảm bảo kiểu dữ liệu phù hợp
+        df_result = ensure_proper_dtypes(df_result)
+        
+        status_label.config(text=f"Đã đọc xong file Excel", style="StatusSuccess.TLabel")
+        return df_result
+        
+    except Exception as e:
+        status_label.config(text=f"Lỗi: {str(e)}", style="StatusCritical.TLabel")
+        messagebox.showerror("Lỗi", f"Không thể đọc file Excel: {str(e)}")
+        traceback.print_exc()
+        return pd.DataFrame()  # Trả về DataFrame rỗng khi có lỗi
 
 # Khởi tạo giao diện
 create_ui()
