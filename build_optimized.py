@@ -60,13 +60,11 @@ options = [
     '--exclude-module=PyQt6',
     '--exclude-module=PySide2',
     '--exclude-module=PySide6',
-    '--exclude-module=PIL',
     '--exclude-module=IPython',
     '--exclude-module=notebook',
     '--exclude-module=jedi',
     '--exclude-module=jupyter',
     '--exclude-module=zmq',
-    '--exclude-module=cryptography',
     '--exclude-module=webbrowser',
     '--exclude-module=xml.dom.domreg',
     '--exclude-module=pycparser',
@@ -80,6 +78,13 @@ options = [
     '--hidden-import=matplotlib.backends.backend_tkagg',
     '--hidden-import=matplotlib.figure',
     '--hidden-import=matplotlib.backends.backend_pdf',
+    '--hidden-import=matplotlib.colors',
+    '--hidden-import=matplotlib.pyplot',
+    '--hidden-import=matplotlib.rcsetup',
+    '--hidden-import=PIL',
+    '--hidden-import=PIL._tkinter_finder',
+    '--hidden-import=PIL.Image',
+    '--hidden-import=cryptography',
 ]
 
 # Chạy PyInstaller với các options tối ưu

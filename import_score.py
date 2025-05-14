@@ -55,7 +55,7 @@ config = {
         'score': 'Điểm'          # Default score column
     },    'max_questions': 40,
     'score_per_question': 0.25,
-    'version': '1.7.1',
+    'version': '1.8.2',
     'exam_codes': ['701', '702', '703', '704'],  # Thêm danh sách mã đề
     'shortcuts': {
         'search': '<Control-f>',
@@ -68,6 +68,10 @@ config = {
         'auto_lock_timeout_minutes': 0
     },
     'changelog': {
+        '1.8.2':[
+            'Sửa lại một số lỗi liên quan đến pandas mới',
+            'Sửa lại một số lỗi liên quan đến matplotlib mới'
+        ],
         '1.7.1':[
             'Sửa lại một số lỗi trước đó'
         ],
@@ -2252,8 +2256,25 @@ def check_for_updates(show_notification=True):
             latest_version = release_info.get('tag_name', '').lstrip('v')
             current_version = config.get('version', '0.0.0')
             
+            # Kiểm tra nếu phiên bản hiện tại cao hơn phiên bản mới nhất, đánh dấu là dev
+            if current_version > latest_version:
+                config['is_dev'] = True
+                save_config()  # Lưu cấu hình
+                
+                # Cập nhật hiển thị phiên bản
+                version_display = f"v{current_version} dev"
+                for widget in root.winfo_children():
+                    if isinstance(widget, ttk.Label) and widget.cget("text").startswith("v"):
+                        widget.config(text=version_display)
+                
+                if show_notification:
+                    if 'file_path' in globals() and file_path:
+                        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
+                    messagebox.showinfo("Phiên bản phát triển", f"Bạn đang sử dụng phiên bản phát triển ({current_version} dev). Phiên bản phát hành mới nhất là {latest_version}.")
+                return False
+                
             # So sánh phiên bản
-            if latest_version > current_version:
+            elif latest_version > current_version:
                 # Hiển thị thông báo có phiên bản mới
                 if show_notification:
                     release_notes = release_info.get('body', 'Không có thông tin chi tiết.')
@@ -2266,7 +2287,7 @@ def check_for_updates(show_notification=True):
                     )
                     
                     if result:
-                        # Mở trang download
+                        # Tìm URL để tải xuống
                         download_url = ""
                         for asset in release_info.get('assets', []):
                             if asset.get('name', '').endswith('.exe'):
@@ -2274,9 +2295,48 @@ def check_for_updates(show_notification=True):
                                 break
                                 
                         if download_url:
-                            import webbrowser
-                            webbrowser.open(download_url)
+                            try:
+                                # Hiển thị thông báo đang tải
+                                status_label.config(text=f"Đang tải phiên bản mới {latest_version}...", 
+                                                  style="StatusWarning.TLabel")
+                                root.update()
+                                
+                                # Tạo thư mục tạm để tải xuống
+                                temp_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+                                os.makedirs(temp_dir, exist_ok=True)
+                                
+                                # Tạo tên file tạm
+                                file_name = os.path.basename(download_url)
+                                temp_file = os.path.join(temp_dir, file_name)
+                                
+                                # Tải xuống tệp
+                                with requests.get(download_url, stream=True) as r:
+                                    r.raise_for_status()
+                                    total_size = int(r.headers.get('content-length', 0))
+                                    
+                                    # Ghi tệp đã tải xuống
+                                    with open(temp_file, 'wb') as f:
+                                        for chunk in r.iter_content(chunk_size=8192):
+                                            f.write(chunk)
+                                
+                                # Hỏi người dùng có muốn cài đặt không
+                                install_now = messagebox.askyesno("Tải xuống hoàn tất", 
+                                                             f"Đã tải phiên bản {latest_version} về:\n{temp_file}\n\nBạn có muốn cài đặt ngay bây giờ không?")
+                                
+                                if install_now:
+                                    # Chạy tệp cài đặt và thoát ứng dụng hiện tại
+                                    os.startfile(temp_file)
+                                    root.after(1000, root.destroy)
+                                
+                                status_label.config(text=f"Đã tải phiên bản mới {latest_version}", 
+                                                  style="StatusSuccess.TLabel")
+                            except Exception as download_error:
+                                messagebox.showerror("Lỗi tải xuống", 
+                                                f"Không thể tải phiên bản mới: {str(download_error)}\n\nVui lòng tải thủ công từ trang web.")
+                                import webbrowser
+                                webbrowser.open(release_info.get('html_url', ''))
                         else:
+                            import webbrowser
                             webbrowser.open(release_info.get('html_url', ''))
                 
                 if 'file_path' in globals() and file_path:

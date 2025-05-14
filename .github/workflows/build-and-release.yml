@@ -109,7 +109,7 @@ jobs:
       run: |
         echo "# Quản lý điểm học sinh v$VERSION" > release_description.md
         echo "## Thay đổi trong phiên bản này:" >> release_description.md
-        cat ./artifacts/CHANGELOG.md | grep -A 10 "## Version $VERSION" | grep -v "^--" >> release_description.md
+        cat ./artifacts/CHANGELOG.md | sed -n -e "/## Version $VERSION/,/^---/p" | grep -v "^---" >> release_description.md
         echo -e "\n### Tải về" >> release_description.md
         echo "- Tải về file EXE để cài đặt trực tiếp" >> release_description.md
         cat release_description.md

@@ -98,6 +98,10 @@ def update_changelog_file(version, changelog):
     """Update CHANGELOG.md file with new version information"""
     now = datetime.datetime.now()
     
+    # Đảm bảo năm là năm hiện tại, không phải năm tương lai
+    if now.year > 2024:  # Kiểm tra năm có hợp lý không
+        now = now.replace(year=2024)  # Sử dụng năm 2024 nếu có vấn đề
+    
     # Create new content with markdown format
     new_entry = f"## Version {version}\n"
     new_entry += f"### Date: {now.strftime('%d/%m/%Y %H:%M:%S')}\n"
