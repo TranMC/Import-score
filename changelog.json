@@ -1,6 +1,10 @@
-{   "2.3.9.2-pre-release-2":[
+{   
+    "2.4.0":[
+        "Vứt tính năng memory fix đi"
+    ],    
+    "2.3.9.2-pre-release-2":[
         "Minor change"
-],
+    ],
     "2.3.9":[
         "Quality fix: nâng cấp tốc độ tải xuống"
     ],
