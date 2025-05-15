@@ -43,16 +43,9 @@ jobs:
     
     - name: Install dependencies
       run: |
-        mkdir temp
-        $env:TEMP = "${{ github.workspace }}\temp"
-        $env:TMP = "${{ github.workspace }}\temp"
-        $env:PYTHONUTF8 = 1
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install openpyxl>=3.1.0
-        
-        # Cài đặt PyInstaller phiên bản cụ thể, đã được kiểm tra và hoạt động tốt
-        pip uninstall -y pyinstaller
         pip install pyinstaller==5.13.2
       shell: pwsh
     
@@ -68,29 +61,14 @@ jobs:
       run: |
         # Xác minh môi trường
         Write-Host "Current working directory: $(Get-Location)"
-        Write-Host "TEMP directory: $env:TEMP"
-        Write-Host "TMP directory: $env:TMP"
         Write-Host "Python path: $(Get-Command python | Select-Object -ExpandProperty Source)"
-        # Kiểm tra encoding của PowerShell
-        Write-Host "PowerShell output encoding: $($OutputEncoding.EncodingName)"
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
         Write-Host "Set console encoding to UTF-8"
         # Kiểm tra môi trường Python
         python -c "import sys; print(f'Python version: {sys.version}')"
         python -c "import sys; print(f'Python executable: {sys.executable}')"
         python -c "import sys; print(f'Python encoding: {sys.getdefaultencoding()}')"
-        
-        # Kiểm tra PyInstaller đã có chưa
         python -c "import PyInstaller; print(f'PyInstaller version: {PyInstaller.__version__}')"
-        
-        # Kiểm tra spec file đã tồn tại chưa
-        if (Test-Path improved_spec.spec) {
-          Write-Host "improved_spec.spec already exists"
-        } else {
-          Write-Host "Creating improved_spec.spec"
-          # Sao chép từ đường dẫn khác nếu có
-          # Copy-Item "template_spec.spec" -Destination "improved_spec.spec" -Force
-        }
       shell: pwsh
     
     - name: Generate version and changelog
@@ -115,12 +93,7 @@ jobs:
     
     - name: Build executable
       run: |
-        $env:PYTHONIOENCODING = "utf-8"
-        $env:PYTHONUTF8 = "1"
-        $env:TEMP = "${{ github.workspace }}\temp"
-        $env:TMP = "${{ github.workspace }}\temp"
         python build_optimized.py
-        Get-ChildItem dist
       shell: pwsh
     
     - name: Verify build artifact
@@ -132,10 +105,6 @@ jobs:
         if (Test-Path $exePath) {
           $fileSize = (Get-Item $exePath).Length / 1MB
           Write-Host "✓ Build successful: $exePath ($([math]::Round($fileSize, 2)) MB)"
-          
-          # Kiểm tra hash của file để đảm bảo tính toàn vẹn
-          $hash = Get-FileHash -Path $exePath -Algorithm SHA256
-          Write-Host "File hash (SHA256): $($hash.Hash)"
         } else {
           Write-Host "❌ Build failed: $exePath not found"
           exit 1

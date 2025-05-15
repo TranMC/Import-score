@@ -212,17 +212,7 @@ def build_executable(version, config_files):
     # Đặt biến môi trường để đảm bảo xử lý đúng encoding
     os.environ["PYTHONIOENCODING"] = "utf-8"
     
-    # Kiểm tra chúng ta có đang chạy trên GitHub Actions không
-    if os.environ.get("GITHUB_ACTIONS") == "true":
-        log("Đang chạy trên GitHub Actions, áp dụng cấu hình đặc biệt...", "INFO")
-        # Thêm các cấu hình đặc biệt cho GitHub Actions
-        os.environ["TEMP"] = os.path.join(os.getcwd(), "temp")
-        os.environ["TMP"] = os.path.join(os.getcwd(), "temp")
-        if not os.path.exists("temp"):
-            os.makedirs("temp")
-            log("Đã tạo thư mục temp để xử lý đường dẫn tạm", "INFO")
-    
-    # Các options tối ưu để giảm kích thước
+    # Các options cơ bản không bao gồm tối ưu hoá
     options = [
         'import_score.py',
         f'--name=Student Score Import v{version}',
@@ -230,23 +220,10 @@ def build_executable(version, config_files):
         '--windowed',
         '--icon=app.ico',
         '--clean',
-        '--exclude-module=scipy',
-        '--exclude-module=PyQt5',
-        '--exclude-module=PyQt6',
-        '--exclude-module=PySide2',
-        '--exclude-module=PySide6',
-        '--exclude-module=IPython',
-        '--exclude-module=notebook',
-        '--exclude-module=jedi',
-        '--exclude-module=jupyter',
-        '--exclude-module=zmq',
-        '--exclude-module=webbrowser',
-        '--exclude-module=xml.dom.domreg',
-        '--exclude-module=pycparser',
-        '--exclude-module=sqlite3',
         f'--add-data={app_config_file}{sep}.',
         f'--add-data={version_json_file}{sep}.',
         f'--add-data={changelog_json_file}{sep}.',
+        '--log-level=INFO',
     ]
     
     # Thêm UPX nếu có
@@ -286,25 +263,10 @@ def build_executable(version, config_files):
     
     # Thêm hidden imports vào options
     for imp in hidden_imports:
-        options.append(f'--hidden-import={imp}')    # Các tùy chọn tối ưu hóa bổ sung
-    optimization_options = [
-        '--strip',  # Xóa thông tin gỡ lỗi để giảm kích thước
-        '--log-level=INFO',  # Mức log khi build
-        # Loại bỏ runtime-tmpdir để sử dụng đường dẫn an toàn hơn
-        '--workpath=./build',  # Sử dụng thư mục build có thể kiểm soát được
-        '--distpath=./dist',   # Đảm bảo thư mục dist nằm ở vị trí cụ thể
-        '--noconfirm',         # Không hỏi khi ghi đè các file
-    ]
+        options.append(f'--hidden-import={imp}')
     
-    options.extend(optimization_options)
-    
-    # Thêm tùy chọn cho Windows trên GitHub Actions
-    if platform.system() == "Windows" and os.environ.get("GITHUB_ACTIONS") == "true":
-        options.append('--codesign-identity=')  # Tránh lỗi khi không có certificate
-        log("Đã thêm tùy chọn --codesign-identity='' cho Windows", "INFO")
-        
     # Chạy PyInstaller với các options đã chuẩn bị
-    log(f"Chạy PyInstaller với các tùy chọn đã tối ưu", "INFO")
+    log(f"Chạy PyInstaller với cấu hình đơn giản", "INFO")
     try:
         import PyInstaller.__main__
         PyInstaller.__main__.run(options)
@@ -326,19 +288,6 @@ def build_executable(version, config_files):
         log(f"Lỗi khi build: {str(e)}", "ERROR")
         sys.exit(1)
 
-def build_with_spec(spec_file, additional_options=[]):
-    """Build using a specific spec file instead of command line options"""
-    log(f"Bắt đầu build sử dụng spec file: {spec_file}...", "INFO")
-    
-    try:
-        import PyInstaller.__main__
-        PyInstaller.__main__.run([spec_file, '--clean'] + additional_options)
-        log(f"Build với spec file hoàn thành!", "SUCCESS")
-        return True
-    except Exception as e:
-        log(f"Lỗi khi build với spec file: {str(e)}", "ERROR")
-        return False
-
 def main():
     """Hàm chính điều phối quá trình build"""
     print("\n" + "="*50)
@@ -358,55 +307,9 @@ def main():
     # Chuẩn bị môi trường build
     config_files = prepare_build_environment()
     
-    # Kiểm tra spec file cải tiến
-    improved_spec = os.path.join(os.path.dirname(os.path.abspath(__file__)), "improved_spec.spec")
-    if os.path.exists(improved_spec):
-        log("Tìm thấy spec file cải tiến, ưu tiên sử dụng để tránh lỗi encoding", "INFO")
-        
-        # Đảm bảo chúng ta có môi trường build sạch
-        build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build")
-        if os.path.exists(build_dir):
-            log("Xóa thư mục build cũ để đảm bảo build mới hoàn toàn", "INFO")
-            try:
-                shutil.rmtree(build_dir)
-            except Exception as e:
-                log(f"Không thể xóa thư mục build: {str(e)}", "WARNING")
-        
-        # Thêm runtime hooks để giải quyết vấn đề DLL
-        hooks_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks")
-        if not os.path.exists(hooks_dir):
-            os.makedirs(hooks_dir)
-            log(f"Đã tạo thư mục hooks: {hooks_dir}", "INFO")
-        
-        # Tạo runtime hook để xử lý DLL
-        dll_hook_path = os.path.join(hooks_dir, "hook-runtime-dll-fix.py")
-        with open(dll_hook_path, "w", encoding="utf-8") as f:
-            f.write("""
-# -*- coding: utf-8 -*-
-# Runtime hook để giải quyết vấn đề tải Python DLL
-import os
-import sys
-
-def fix_dll_path():
-    # Đặt cố định đường dẫn DLL
-    if hasattr(sys, '_MEIPASS'):
-        # Thay đổi thư mục làm việc để đảm bảo tìm được DLL
-        bundle_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
-        # Đặt thư mục này vào PATH để dễ tìm DLL
-        os.environ['PATH'] = bundle_dir + os.pathsep + os.environ.get('PATH', '')
-
-# Chạy ngay khi module được import
-fix_dll_path()
-""")
-        log(f"Đã tạo runtime hook để sửa lỗi tải DLL", "SUCCESS")
-        
-        # Chạy với options bổ sung
-        log("Chạy PyInstaller với spec file và runtime hooks bổ sung", "INFO")
-        success = build_with_spec(improved_spec, ["--additional-hooks-dir", hooks_dir])
-    else:
-        # Build ứng dụng bằng các tùy chọn thông thường
-        log("Không tìm thấy spec file cải tiến, sử dụng tùy chọn dòng lệnh", "INFO")
-        success = build_executable(version, config_files)
+    # Build ứng dụng với cấu hình đơn giản
+    log("Sử dụng cấu hình build đơn giản", "INFO")
+    success = build_executable(version, config_files)
     
     if success:
         print("\n" + "="*50)
