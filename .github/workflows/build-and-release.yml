@@ -13,6 +13,9 @@ on:
 
 env:
   PYTHONIOENCODING: utf-8
+  PYTHONUTF8: 1
+  PIP_NO_CACHE_DIR: 1
+  PYTHONDONTWRITEBYTECODE: 1
 
 jobs:
   build:
@@ -28,6 +31,7 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: 3.11
+        architecture: 'x64'
     
     - name: Cache dependencies
       uses: actions/cache@v4
@@ -39,9 +43,14 @@ jobs:
     
     - name: Install dependencies
       run: |
+        mkdir temp
+        $env:TEMP = "${{ github.workspace }}\temp"
+        $env:TMP = "${{ github.workspace }}\temp"
+        $env:PYTHONUTF8 = 1
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install openpyxl>=3.1.0
+      shell: pwsh
     
     - name: Check for errors in script
       run: |
@@ -51,14 +60,31 @@ jobs:
           exit 1
         }
     
-    - name: Generate version and changelog
-      shell: cmd
+    - name: Setup environment for PyInstaller
       run: |
-        chcp 65001 >nul
-        set PYTHONIOENCODING=utf-8
+        # Xác minh môi trường
+        Write-Host "Current working directory: $(Get-Location)"
+        Write-Host "TEMP directory: $env:TEMP"
+        Write-Host "TMP directory: $env:TMP"
+        Write-Host "Python path: $(Get-Command python | Select-Object -ExpandProperty Source)"
+        # Kiểm tra encoding của PowerShell
+        Write-Host "PowerShell output encoding: $($OutputEncoding.EncodingName)"
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        Write-Host "Set console encoding to UTF-8"
+        # Kiểm tra môi trường Python
+        python -c "import sys; print(f'Python version: {sys.version}')"
+        python -c "import sys; print(f'Python executable: {sys.executable}')"
+        python -c "import sys; print(f'Python encoding: {sys.getdefaultencoding()}')"
+      shell: pwsh
+    
+    - name: Generate version and changelog
+      shell: pwsh
+      run: |
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $env:PYTHONIOENCODING = "utf-8"
         python write_log.py
-        type version.txt
-      
+        Get-Content -Encoding UTF8 version.txt
+    
     - name: Read version
       id: version
       run: |
@@ -73,8 +99,32 @@ jobs:
     
     - name: Build executable
       run: |
+        $env:PYTHONIOENCODING = "utf-8"
+        $env:PYTHONUTF8 = "1"
+        $env:TEMP = "${{ github.workspace }}\temp"
+        $env:TMP = "${{ github.workspace }}\temp"
         python build_optimized.py
-        dir dist
+        Get-ChildItem dist
+      shell: pwsh
+    
+    - name: Verify build artifact
+      run: |
+        # Kiểm tra file đã được build đúng chưa
+        $version = Get-Content -Path version.txt -Raw
+        $exePath = "dist\Student Score Import v$($version.Trim()).exe"
+        
+        if (Test-Path $exePath) {
+          $fileSize = (Get-Item $exePath).Length / 1MB
+          Write-Host "✓ Build successful: $exePath ($([math]::Round($fileSize, 2)) MB)"
+          
+          # Kiểm tra hash của file để đảm bảo tính toàn vẹn
+          $hash = Get-FileHash -Path $exePath -Algorithm SHA256
+          Write-Host "File hash (SHA256): $($hash.Hash)"
+        } else {
+          Write-Host "❌ Build failed: $exePath not found"
+          exit 1
+        }
+      shell: pwsh
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4

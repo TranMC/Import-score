@@ -204,7 +204,23 @@ def build_executable(version, config_files):
     # Separator tuỳ hệ điều hành
     sep = ';' if os.name == 'nt' else ':'
     
-    app_config_file, version_json_file, changelog_json_file = config_files
+    # Đảm bảo các đường dẫn file đều được normalize để tránh vấn đề với ký tự Unicode
+    app_config_file, version_json_file, changelog_json_file = [
+        os.path.normpath(os.path.abspath(file)) for file in config_files
+    ]
+    
+    # Đặt biến môi trường để đảm bảo xử lý đúng encoding
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+    
+    # Kiểm tra chúng ta có đang chạy trên GitHub Actions không
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        log("Đang chạy trên GitHub Actions, áp dụng cấu hình đặc biệt...", "INFO")
+        # Thêm các cấu hình đặc biệt cho GitHub Actions
+        os.environ["TEMP"] = os.path.join(os.getcwd(), "temp")
+        os.environ["TMP"] = os.path.join(os.getcwd(), "temp")
+        if not os.path.exists("temp"):
+            os.makedirs("temp")
+            log("Đã tạo thư mục temp để xử lý đường dẫn tạm", "INFO")
     
     # Các options tối ưu để giảm kích thước
     options = [
@@ -270,16 +286,23 @@ def build_executable(version, config_files):
     
     # Thêm hidden imports vào options
     for imp in hidden_imports:
-        options.append(f'--hidden-import={imp}')
-      # Các tùy chọn tối ưu hóa bổ sung
+        options.append(f'--hidden-import={imp}')    # Các tùy chọn tối ưu hóa bổ sung
     optimization_options = [
-        # Loại bỏ tùy chọn không hợp lệ noupx-exclude
         '--strip',  # Xóa thông tin gỡ lỗi để giảm kích thước
         '--log-level=INFO',  # Mức log khi build
+        # Loại bỏ runtime-tmpdir để sử dụng đường dẫn an toàn hơn
+        '--workpath=./build',  # Sử dụng thư mục build có thể kiểm soát được
+        '--distpath=./dist',   # Đảm bảo thư mục dist nằm ở vị trí cụ thể
+        '--noconfirm',         # Không hỏi khi ghi đè các file
     ]
     
     options.extend(optimization_options)
     
+    # Thêm tùy chọn cho Windows trên GitHub Actions
+    if platform.system() == "Windows" and os.environ.get("GITHUB_ACTIONS") == "true":
+        options.append('--codesign-identity=')  # Tránh lỗi khi không có certificate
+        log("Đã thêm tùy chọn --codesign-identity='' cho Windows", "INFO")
+        
     # Chạy PyInstaller với các options đã chuẩn bị
     log(f"Chạy PyInstaller với các tùy chọn đã tối ưu", "INFO")
     try:
@@ -303,6 +326,19 @@ def build_executable(version, config_files):
         log(f"Lỗi khi build: {str(e)}", "ERROR")
         sys.exit(1)
 
+def build_with_spec(spec_file):
+    """Build using a specific spec file instead of command line options"""
+    log(f"Bắt đầu build sử dụng spec file: {spec_file}...", "INFO")
+    
+    try:
+        import PyInstaller.__main__
+        PyInstaller.__main__.run([spec_file, '--clean'])
+        log(f"Build với spec file hoàn thành!", "SUCCESS")
+        return True
+    except Exception as e:
+        log(f"Lỗi khi build với spec file: {str(e)}", "ERROR")
+        return False
+
 def main():
     """Hàm chính điều phối quá trình build"""
     print("\n" + "="*50)
@@ -322,8 +358,15 @@ def main():
     # Chuẩn bị môi trường build
     config_files = prepare_build_environment()
     
-    # Build ứng dụng
-    success = build_executable(version, config_files)
+    # Kiểm tra spec file cải tiến
+    improved_spec = os.path.join(os.path.dirname(os.path.abspath(__file__)), "improved_spec.spec")
+    if os.path.exists(improved_spec):
+        log("Tìm thấy spec file cải tiến, ưu tiên sử dụng để tránh lỗi encoding", "INFO")
+        success = build_with_spec(improved_spec)
+    else:
+        # Build ứng dụng bằng các tùy chọn thông thường
+        log("Không tìm thấy spec file cải tiến, sử dụng tùy chọn dòng lệnh", "INFO")
+        success = build_executable(version, config_files)
     
     if success:
         print("\n" + "="*50)
