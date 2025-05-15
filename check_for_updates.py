@@ -10,8 +10,10 @@ from datetime import datetime
 import threading
 import json
 import tempfile
-import concurrent.futures
 import time
+import stat
+import sys
+# Các thư viện khác sẽ được import khi cần
 
 def check_for_updates(root, status_label, file_path, config, save_config, show_notification=True):
     """
@@ -28,15 +30,30 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
     Returns:
         bool: True nếu có phiên bản mới, False nếu không
     """
+    # Xử lý lỗi invalid access khi chạy từ executable
     try:
+        # Đảm bảo tkinter được khởi tạo đúng cách
+        tkinter_available = True
+        try:
+            # Thử import không tập trung
+            import _tkinter
+            _ = tk.Tk
+        except (ImportError, AttributeError):
+            tkinter_available = False
+        
         # Nếu không có root và cần hiển thị giao diện, tạo một root tạm thời
         temp_root = None
-        if root is None and show_notification:
+        if root is None and show_notification and tkinter_available:
             # Tạo một cửa sổ ẩn để hiển thị các hộp thoại
-            temp_root = tk.Tk()
-            temp_root.withdraw()  # Ẩn cửa sổ
-            # Sử dụng temp_root khi root là None
-            root = temp_root
+            try:
+                temp_root = tk.Tk()
+                temp_root.withdraw()  # Ẩn cửa sổ
+                # Sử dụng temp_root khi root là None
+                root = temp_root
+            except Exception as e:
+                print(f"Không thể tạo cửa sổ Tkinter: {str(e)}")
+                root = None
+                tkinter_available = False
         
         # Cập nhật UI nếu có status_label
         if status_label:
@@ -73,7 +90,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
             # Kiểm tra nếu phiên bản hiện tại cao hơn phiên bản mới nhất, đánh dấu là dev
             if current_version > latest_version and not is_dev:
                 # Thông báo cho người dùng biết họ đang sử dụng phiên bản phát triển
-                if show_notification:
+                if show_notification and tkinter_available:
                     if status_label:
                         status_label.config(text=f"Đang sử dụng phiên bản phát triển ({current_version})", style="StatusWarning.TLabel")
                     messagebox.showinfo("Phiên bản phát triển", f"Bạn đang sử dụng phiên bản phát triển ({current_version} dev version). Phiên bản phát hành mới nhất là {latest_version}.")
@@ -81,12 +98,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                     # Khi tự động kiểm tra, cập nhật thanh trạng thái
                     if status_label:
                         status_label.config(text=f"Phiên bản phát triển ({current_version})", style="StatusWarning.TLabel")
+                    print(f"Phiên bản phát triển ({current_version}). Phiên bản phát hành mới nhất là {latest_version}.")
                 return False
                 
             # So sánh phiên bản
             elif latest_version > current_version:
                 # Hiển thị thông báo có phiên bản mới
-                if show_notification:
+                if show_notification and tkinter_available:
                     release_notes = release_info.get('body', 'Không có thông tin chi tiết.')
                     result = messagebox.askyesno(
                         "Có phiên bản mới",
@@ -134,7 +152,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                 
                                 # Đặt cửa sổ ở giữa màn hình
                                 window_width = 450
-                                window_height = 350
+                                window_height = 310
                                 # Xử lý trường hợp root là None
                                 if root:
                                     screen_width = root.winfo_screenwidth()
@@ -231,7 +249,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                 
                                 # Thêm nút hủy tải xuống
                                 cancel_button = ttk.Button(control_frame, text="Hủy tải xuống",
-                                                         command=lambda: setattr(progress_window, 'cancelled', True),
+                                                         command=lambda: on_cancel_download(),
                                                          style="Cancel.TButton")
                                 cancel_button.pack(side="right", padx=10, pady=5)
                                 
@@ -242,6 +260,20 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                 
                                 # Biến để kiểm tra trạng thái hủy
                                 progress_window.cancelled = False
+                                
+                                # Hàm xử lý khi nhấn nút hủy
+                                def on_cancel_download():
+                                    # Đổi tiêu đề cửa sổ ngay lập tức
+                                    progress_window.title("Đang hủy tải xuống...")
+                                    # Hiển thị thông báo ngay trong UI
+                                    percent_label.config(text="Đang hủy...")
+                                    # Vô hiệu hóa nút hủy để tránh nhấn nhiều lần
+                                    cancel_button.config(state="disabled")
+                                    # Đặt cờ hủy
+                                    progress_window.cancelled = True
+                                    
+                                    # Cập nhật UI ngay lập tức
+                                    progress_window.update()
                                 
                                 # Tạo dictionary chứa các UI elements để truyền vào callback
                                 ui_elements = {
@@ -327,8 +359,10 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                             downloaded = downloaded_bytes
                                             
                                             # Kiểm tra nếu đã hủy tải xuống
-                                            if hasattr(ui_elements['window'], 'cancelled') and ui_elements['window'].cancelled:
-                                                raise Exception("Đã hủy tải xuống")
+                                            window = ui_elements['window']
+                                            if hasattr(window, 'cancelled') and window.cancelled:
+                                                # Trả về False để thông báo hủy
+                                                return False
                                             
                                             ui_elements['percent_label'].config(text=f"{percent}%")
                                             ui_elements['download_detail_label'].config(text=f"({downloaded_bytes/1024/1024:.1f}/{total_bytes/1024/1024:.1f} MB)")
@@ -357,9 +391,11 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                         last_update_time = start_time
                                         last_downloaded = 0
                                         with open(temp_file, 'wb') as f:
-                                            for chunk in r.iter_content(chunk_size=32768):
+                                            # Sử dụng chunk size nhỏ hơn để kiểm tra hủy thường xuyên hơn
+                                            for chunk in r.iter_content(chunk_size=8192):  # 8KB thay vì 32KB
                                                 # Kiểm tra nếu đã hủy tải xuống
                                                 if progress_window.cancelled:
+                                                    print("Đã hủy tải xuống đơn luồng")
                                                     break
                                                     
                                                 if chunk:
@@ -367,13 +403,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                                     downloaded += len(chunk)
                                                     current_time = datetime.now()
                                                     time_diff = (current_time - last_update_time).total_seconds()
-                                                    if time_diff >= 0.5 and total_size > 0:
+                                                    if time_diff >= 0.2 and total_size > 0:  # 0.2s thay vì 0.5s
                                                         percent = int(100 * downloaded / total_size)
                                                         try:
                                                             progress["value"] = percent
                                                             percent_label.config(text=f"{percent}%")
                                                             download_detail_label.config(text=f"({downloaded/1024/1024:.1f}/{total_size/1024/1024:.1f} MB)")
-                                                            progress_window.update_idletasks()
+                                                            progress_window.update()  # update() thay vì update_idletasks() để cập nhật UI đầy đủ
                                                         except Exception as e:
                                                             print(f"Lỗi cập nhật UI tải thường: {str(e)}")
                                                         last_update_time = current_time
@@ -384,13 +420,14 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                     try:
                                         # Xóa file tạm nếu đã hủy tải xuống
                                         if os.path.exists(temp_file):
-                                            os.remove(temp_file)
+                                            # Xóa file triệt để (không vào thùng rác)
+                                            force_delete_file(temp_file)
                                         
                                         # Đóng cửa sổ tiến trình
                                         progress_window.destroy()
                                         
                                         # Thông báo cho người dùng
-                                        messagebox.showinfo("Đã hủy tải xuống", "Quá trình tải xuống đã bị hủy.")
+                                        messagebox.showinfo("Đã hủy tải xuống", "Quá trình tải xuống đã bị hủy và file tạm đã được xóa.")
                                         
                                         if status_label:
                                             status_label.config(text="Đã hủy tải xuống", style="StatusWarning.TLabel")
@@ -447,7 +484,6 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                         root.after(1000, root.destroy)
                                     else:
                                         # Nếu không có root, thoát chương trình sau khi cài đặt
-                                        import sys
                                         def exit_app():
                                             sys.exit(0)
                                         threading.Timer(1.0, exit_app).start()
@@ -475,7 +511,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 return True
             else:
                 # Không có phiên bản mới
-                if show_notification:
+                if show_notification and tkinter_available:
                     if file_path and status_label:
                         status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
                     messagebox.showinfo("Cập nhật", f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
@@ -485,11 +521,12 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                         status_label.config(text=f"Đang sử dụng phiên bản mới nhất ({current_version})", style="StatusGood.TLabel")
                         if root:
                             root.update_idletasks()
+                    print(f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
                 return False
         else:
             # Lỗi kết nối
             print(f"Lỗi kết nối đến GitHub API, mã: {response.status_code}")
-            if show_notification:
+            if show_notification and tkinter_available:
                 if file_path and status_label:
                     status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusError.TLabel")
                 messagebox.showwarning("Lỗi kết nối", f"Không thể kết nối đến máy chủ GitHub. Mã lỗi: {response.status_code}")
@@ -499,12 +536,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                     status_label.config(text=f"Không thể kết nối đến máy chủ GitHub. Mã: {response.status_code}", style="StatusError.TLabel")
                     if root:
                         root.update_idletasks()
+                print(f"Lỗi kết nối đến GitHub API, mã: {response.status_code}")
             return False
     
     except requests.exceptions.ConnectionError as e:
         # Lỗi kết nối mạng cụ thể
         print(f"Lỗi kết nối: {str(e)}")
-        if show_notification:
+        if show_notification and tkinter_available:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", "Không thể kết nối đến máy chủ GitHub. Vui lòng kiểm tra kết nối mạng của bạn.")
@@ -514,12 +552,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 status_label.config(text="Không thể kết nối đến máy chủ GitHub", style="StatusError.TLabel")
                 if root:
                     root.update_idletasks()
+            print("Không thể kết nối đến máy chủ GitHub. Vui lòng kiểm tra kết nối mạng của bạn.")
         return False
     
     except requests.exceptions.Timeout as e:
         # Lỗi timeout
         print(f"Lỗi timeout: {str(e)}")
-        if show_notification:
+        if show_notification and tkinter_available:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", "Máy chủ GitHub phản hồi quá chậm. Vui lòng thử lại sau.")
@@ -529,12 +568,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 status_label.config(text="Máy chủ GitHub phản hồi quá chậm", style="StatusError.TLabel")
                 if root:
                     root.update_idletasks()
+            print("Máy chủ GitHub phản hồi quá chậm. Vui lòng thử lại sau.")
         return False
         
     except requests.RequestException as e:
         # Xử lý lỗi request khác
         print(f"Lỗi request: {str(e)}")
-        if show_notification:
+        if show_notification and tkinter_available:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", f"Không thể kiểm tra phiên bản mới: {str(e)}")
@@ -544,12 +584,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
                 if root:
                     root.update_idletasks()
+            print(f"Không thể kiểm tra phiên bản mới: {str(e)}")
         return False
     
     except json.JSONDecodeError as e:
         # Lỗi khi parse JSON
         print(f"Lỗi parse JSON: {str(e)}")
-        if show_notification:
+        if show_notification and tkinter_available:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi dữ liệu", "Không thể đọc thông tin phiên bản từ máy chủ. Định dạng dữ liệu không hợp lệ.")
@@ -559,12 +600,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 status_label.config(text="Lỗi định dạng dữ liệu từ máy chủ", style="StatusError.TLabel")
                 if root:
                     root.update_idletasks()
+            print("Không thể đọc thông tin phiên bản từ máy chủ. Định dạng dữ liệu không hợp lệ.")
         return False
     
     except Exception as e:
         # Xử lý các lỗi khác
         print(f"Lỗi không xác định: {str(e)}")
-        if show_notification:
+        if show_notification and tkinter_available:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi", f"Đã xảy ra lỗi khi kiểm tra phiên bản mới: {str(e)}")
@@ -574,6 +616,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
                 if root:
                     root.update_idletasks()
+            print(f"Đã xảy ra lỗi khi kiểm tra phiên bản mới: {str(e)}")
         return False
     finally:
         # Nếu đã tạo root tạm thời, hủy nó
@@ -633,6 +676,13 @@ def download_file_multipart(url, target_path, num_workers=4, chunk_size=1024*102
     Returns:
         bool: True nếu tải xuống thành công, False nếu có lỗi hoặc bị hủy
     """
+    # Xử lý lazy import để tránh lỗi khi đóng gói
+    try:
+        import concurrent.futures
+    except ImportError:
+        print("Không thể import concurrent.futures, sử dụng tải xuống đơn luồng")
+        return False
+    
     try:
         # Kiểm tra kích thước của file và nếu máy chủ hỗ trợ Range requests
         resp = requests.head(url, allow_redirects=True)
@@ -686,7 +736,8 @@ def download_file_multipart(url, target_path, num_workers=4, chunk_size=1024*102
                 
                 if response.status_code in [200, 206]:  # 200 OK or 206 Partial Content
                     with open(part['path'], 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=32768):
+                        # Sử dụng chunk size nhỏ hơn để tăng tần suất kiểm tra hủy
+                        for chunk in response.iter_content(chunk_size=8192):  # 8KB thay vì 32KB
                             # Kiểm tra nếu đã hủy tải xuống
                             if cancel_download:
                                 return False
@@ -760,12 +811,10 @@ def download_file_multipart(url, target_path, num_workers=4, chunk_size=1024*102
         
         # Nếu đã hủy tải xuống, không ghép các phần lại
         if cancel_download:
-            # Xóa các file tạm
+            # Xóa các file tạm triệt để
             for part in parts:
-                try:
-                    os.remove(part['path'])
-                except:
-                    pass
+                if os.path.exists(part['path']):
+                    force_delete_file(part['path'])
             return False
             
         # Ghép các phần lại với nhau
@@ -776,14 +825,31 @@ def download_file_multipart(url, target_path, num_workers=4, chunk_size=1024*102
                     
         # Xóa các file tạm
         for part in parts:
-            try:
-                os.remove(part['path'])
-            except:
-                pass
+            if os.path.exists(part['path']):
+                force_delete_file(part['path'])
                 
         return True
     except Exception as e:
         print(f"Lỗi khi tải xuống đa luồng: {str(e)}")
+        return False
+
+def force_delete_file(file_path):
+    """
+    Xóa file một cách triệt để, không vào thùng rác
+    """
+    try:
+        # Đảm bảo file không ở chế độ chỉ đọc
+        if os.path.exists(file_path):
+            try:
+                os.chmod(file_path, stat.S_IWRITE)
+            except:
+                pass
+            
+            # Xóa file trực tiếp
+            os.remove(file_path)
+            return True
+    except Exception as e:
+        print(f"Không thể xóa file {file_path}: {str(e)}")
         return False
 
 # Thêm main function để module có thể chạy độc lập

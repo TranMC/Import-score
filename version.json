@@ -1,6 +1,6 @@
 {
-    "version": "2.3.9",
-    "is_dev": false,
+    "version": "2.3.9.2-pre-release-2",
+    "is_dev": true,
     "build_date": "2025-05-15",
-    "code_name": "Stable Release Version"
+    "code_name": "Pre Release Version"
 }
