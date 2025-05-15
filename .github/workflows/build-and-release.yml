@@ -3,6 +3,10 @@ name: Build và Release
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'version.txt'
+      - 'version.json'
     tags:
       - 'v*'
   workflow_dispatch:

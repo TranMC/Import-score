@@ -1,4 +1,7 @@
 {   
+    "2.3.9":[
+        "Quality fix: nâng cấp tốc độ tải xuống"
+    ],
     "2.3.8.1": [
         "Fix lại lỗi no module name Psutil"
     ],
