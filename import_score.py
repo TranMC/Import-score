@@ -723,6 +723,9 @@ def save_excel():
         # Đảm bảo kiểu dữ liệu phù hợp trước khi lưu
         df_to_save = ensure_proper_dtypes(df)
         df_to_save.to_excel(file_path, index=False)
+        # Cập nhật thống kê sau khi lưu
+        update_stats()
+        update_score_extremes()
 
 def find_matching_column(df, target_name):
     """Find column that best matches the target name"""
@@ -868,6 +871,10 @@ def add_student():
         df = pd.concat([df, new_row], ignore_index=True)
         save_excel()
         search_student()
+        
+        # Cập nhật thống kê
+        update_stats()
+        update_score_extremes()
 
 def calculate_score(event=None):
     """Tính điểm từ số câu đúng"""
@@ -925,6 +932,10 @@ def calculate_score(event=None):
         
         save_excel()
         search_student()
+        
+        # Cập nhật thống kê
+        update_stats()
+        update_score_extremes()
         
         # Chỉ xóa nội dung ô số câu đúng
         entry_correct_count.delete(0, tk.END)
@@ -1011,6 +1022,10 @@ def calculate_score_direct(event=None):
         
         save_excel()
         search_student()
+        
+        # Cập nhật thống kê
+        update_stats()
+        update_score_extremes()
         
         # Chỉ xóa nội dung ô nhập điểm
         entry_direct_score.delete(0, tk.END)
@@ -1943,6 +1958,7 @@ def create_ui():
                 df = pd.read_excel(file_path)
                 search_student()
                 update_stats()
+                update_score_extremes()
                 status_label.config(text=f"Đã làm mới dữ liệu từ: {os.path.basename(file_path)}", 
                                   style="StatusGood.TLabel")
                 messagebox.showinfo("Thành công", "Đã làm mới dữ liệu từ file Excel")
@@ -2831,6 +2847,16 @@ def read_excel_file(file_path):
         traceback.print_exc()
         return pd.DataFrame()  # Trả về DataFrame rỗng khi có lỗi
 
+def auto_update_stats():
+    """Tự động cập nhật thống kê theo chu kỳ"""
+    # Cập nhật thống kê
+    if df is not None and not df.empty:
+        update_stats()
+        update_score_extremes()
+    
+    # Thiết lập lịch cập nhật tiếp theo (5 giây)
+    root.after(5000, auto_update_stats)
+
 # Khởi tạo giao diện
 create_ui()
 
@@ -2875,6 +2901,9 @@ check_auto_lock()
 
 # Kiểm tra cập nhật sau khi khởi động (tăng thời gian delay để đảm bảo giao diện đã được tạo hoàn chỉnh)
 root.after(5000, check_updates_async)
+
+# Bắt đầu cập nhật thống kê tự động
+root.after(1000, auto_update_stats)
 
 # Chạy ứng dụng
 root.protocol("WM_DELETE_WINDOW", on_closing)
