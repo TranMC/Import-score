@@ -13,6 +13,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      version: ${{ env.VERSION }}
+      build_date: ${{ env.BUILD_DATE }}
     
     steps:
     - uses: actions/checkout@v4
@@ -59,6 +62,11 @@ jobs:
         echo "VERSION=$VERSION" >> $env:GITHUB_ENV
       shell: pwsh
     
+    - name: Update build date
+      run: |
+        python update_build_date.py
+      shell: pwsh
+    
     - name: Build executable
       run: |
         python build_optimized.py
@@ -72,6 +80,7 @@ jobs:
           dist/
           version.txt
           CHANGELOG.md
+          version.json
         retention-days: 7
     
   release:
@@ -79,6 +88,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      BUILD_DATE: ${{ needs.build.outputs.build_date }}
     
     steps:
     - uses: actions/checkout@v4
@@ -97,6 +109,15 @@ jobs:
         VERSION=$(cat ./artifacts/version.txt)
         echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "Found version: $VERSION"
+        
+        # Đọc build_date từ version.json
+        if [ -f "./artifacts/version.json" ]; then
+          BUILD_DATE=$(cat ./artifacts/version.json | grep -o '"build_date": "[^"]*"' | cut -d'"' -f4)
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
+          echo "Found build date: $BUILD_DATE"
+        else
+          echo "Warning: version.json not found in artifacts"
+        fi
       shell: bash
     
     - name: Prepare release files
@@ -111,6 +132,9 @@ jobs:
         echo "# Quản lý điểm học sinh v$VERSION" > release_description.md
         echo "## Thay đổi trong phiên bản này:" >> release_description.md
         cat ./artifacts/CHANGELOG.md | sed -n -e "/## Version $VERSION/,/^---/p" | grep -v "^---" >> release_description.md
+        echo -e "\n### Thông tin build" >> release_description.md
+        echo "- Phiên bản: v$VERSION" >> release_description.md
+        echo "- Ngày build: $BUILD_DATE" >> release_description.md
         echo -e "\n### Tải về" >> release_description.md
         echo "- Tải về file EXE để cài đặt trực tiếp" >> release_description.md
         cat release_description.md
