@@ -321,46 +321,48 @@ def monitor_memory_usage():
     """Giám sát và báo cáo việc sử dụng bộ nhớ của ứng dụng"""
     import gc
     import os
-    import psutil
     
+    # Tính toán bộ nhớ cơ bản
+    df_memory = 0
+    if df is not None:
+        df_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
+    
+    # Tạo thông tin cơ bản mà không cần psutil
+    memory_info = {
+        "dataframe_memory_mb": df_memory,
+    }
+    
+    # Thử sử dụng psutil nếu có
     try:
+        import psutil
+        
         # Cưỡng chế thu gom rác để có số liệu chính xác
         gc.collect()
         
         # Lấy thông tin bộ nhớ
         process = psutil.Process(os.getpid())
-        memory_info = process.memory_info()
+        memory_info_ext = process.memory_info()
         
         # Tính toán sử dụng bộ nhớ
-        memory_usage_mb = memory_info.rss / (1024 * 1024)
+        memory_usage_mb = memory_info_ext.rss / (1024 * 1024)
         
-        # Thông tin về DataFrame
-        df_memory = 0
-        if df is not None:
-            df_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
-        
-        memory_info = {
+        # Bổ sung thông tin chi tiết
+        memory_info.update({
             "total_memory_mb": memory_usage_mb,
-            "dataframe_memory_mb": df_memory,
             "other_memory_mb": memory_usage_mb - df_memory,
             "process_info": {
                 "pid": os.getpid(),
                 "cpu_percent": process.cpu_percent(interval=0.1),
                 "memory_percent": process.memory_percent()
             }
-        }
-        
-        return memory_info
-        
+        })
     except ImportError:
-        # Nếu không có psutil, chỉ báo cáo thông tin cơ bản
-        memory_info = {
-            "dataframe_memory_mb": df.memory_usage(deep=True).sum() / (1024 * 1024) if df is not None else 0,
-        }
-        return memory_info
+        # Không có psutil, chỉ trả về thông tin cơ bản đã tạo ở trên
+        pass
     except Exception as e:
         print(f"Lỗi theo dõi bộ nhớ: {str(e)}")
-        return {"error": str(e)}
+    
+    return memory_info
 
 def lock_application():
     """Khóa ứng dụng và yêu cầu mật khẩu để mở khóa"""
