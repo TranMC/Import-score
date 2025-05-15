@@ -1,7 +1,7 @@
 {
     "columns": {
         "name": "Tên Học Sinh",
-        "exam_code": "Mã Đề",
+        "exam_code": "Mã đề",
         "score": "Điểm"
     },
     "max_questions": 40,
@@ -69,16 +69,8 @@
             "initial_width": 1000,
             "initial_height": 850,
             "min_width": 800,
-            "min_height": 600,
-            "max_width": 0,
-            "max_height": 0
+            "min_height": 600
         }
     },
-    "memory_optimization": {
-        "lazy_loading": true,
-        "chunk_size": 1000,
-        "large_file_threshold_mb": 5,
-        "auto_optimize": true
-    },
-    "auto_backup": false
+    "auto_backup": true
 }
