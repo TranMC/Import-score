@@ -1,4 +1,9 @@
 {   
+    "2.6.0":[
+        "Xóa hoàn toàn tất cả tính năng liên quan đến memory",
+        "Đơn giản hóa mã nguồn",
+        "Giảm kích thước và độ phức tạp của ứng dụng"
+    ],
     "2.5.0":[
         "Loại bỏ phụ thuộc vào psutil",
         "Tối ưu hóa việc theo dõi bộ nhớ",

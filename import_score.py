@@ -191,88 +191,7 @@ last_activity_time = None  # Thêm biến để theo dõi thời gian hoạt đ�
 lock_window = None  # Thêm biến để theo dõi cửa sổ khóa
 lock_time = None  # Thêm biến để theo dõi thời gian khóa
 
-def optimize_memory_usage(df):
-    """Tối ưu hóa sử dụng bộ nhớ cho DataFrame lớn"""
-    import gc
-    import sys
-    
-    # Nếu DataFrame không có thì không cần tối ưu
-    if df is None:
-        return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
-    
-    # Nếu DataFrame rỗng, trả về ngay
-    if df.empty:
-        return df
-        
-    # Ghi nhận thông tin bộ nhớ trước khi tối ưu
-    initial_memory = df.memory_usage(deep=True).sum()
-    initial_memory_mb = initial_memory / (1024 * 1024)
-    
-    # Tối ưu các kiểu dữ liệu để giảm bộ nhớ
-    for col in df.columns:
-        try:
-            # Chuyển cột số nguyên về kiểu nhỏ hơn nếu có thể
-            if pd.api.types.is_integer_dtype(df[col]):
-                # Bỏ qua các cột có giá trị null
-                if df[col].isna().any():
-                    continue
-                    
-                # Không cần kiểm tra min/max cho các cột nhỏ hơn
-                col_min = df[col].min()
-                col_max = df[col].max()
-                
-                if col_min >= -128 and col_max <= 127:
-                    df[col] = df[col].astype('int8')
-                elif col_min >= -32768 and col_max <= 32767:
-                    df[col] = df[col].astype('int16')
-                elif col_min >= -2147483648 and col_max <= 2147483647:
-                    df[col] = df[col].astype('int32')
-            
-            # Chuyển cột số thực về float32 nếu độ chính xác không quan trọng
-            elif pd.api.types.is_float_dtype(df[col]):
-                df[col] = df[col].astype('float32')
-                
-            # Tối ưu cột chuỗi bằng category nếu số giá trị khác nhau thấp
-            elif pd.api.types.is_object_dtype(df[col]):
-                # Không chuyển các cột quan trọng sang category để tránh vấn đề khi gán giá trị
-                if col not in ['Điểm', 'Mã đề']:
-                    num_unique = df[col].nunique()
-                    num_total = len(df)
-                    # Nếu số giá trị khác nhau nhỏ hơn 50% số hàng, dùng category
-                    if num_unique < num_total * 0.5:
-                        df[col] = df[col].astype('category')
-                    # Thử chuyển về chuỗi UTF-8 (tiết kiệm hơn object)
-                    elif df[col].map(lambda x: isinstance(x, str)).all():
-                        df[col] = df[col].astype('string')
-                # Nếu là cột 'Điểm', chỉ chuyển sang float nếu có thể
-                elif col == 'Điểm':
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
-        except Exception as e:
-            print(f"Lỗi khi tối ưu cột {col}: {str(e)}")
-    
-    # Tính toán bộ nhớ đã tiết kiệm
-    final_memory = df.memory_usage(deep=True).sum()
-    final_memory_mb = final_memory / (1024 * 1024)
-    memory_saved_mb = initial_memory_mb - final_memory_mb
-    memory_saved_percent = (1 - final_memory/initial_memory) * 100 if initial_memory > 0 else 0
-    
-    # Cưỡng chế thu gom rác để giải phóng bộ nhớ
-    gc.collect()
-    
-    # Lưu thông tin về tiết kiệm bộ nhớ vào một biến thay vì gán trực tiếp cho DataFrame
-    memory_optimization_info = {
-        'initial_size_mb': initial_memory_mb,
-        'optimized_size_mb': final_memory_mb,
-        'saved_mb': memory_saved_mb,
-        'saved_percent': memory_saved_percent
-    }
-    
-    # In thông tin về bộ nhớ tiết kiệm được
-    if memory_saved_mb > 0.1:  # Chỉ hiển thị nếu tiết kiệm được đáng kể
-        print(f"Đã tối ưu bộ nhớ: {initial_memory_mb:.2f} MB → {final_memory_mb:.2f} MB (Tiết kiệm {memory_saved_percent:.1f}%)")
-    
-    # Luôn trả về DataFrame đã tối ưu
-    return df
+
 
 def ensure_proper_dtypes(df_input):
     """
@@ -317,22 +236,7 @@ def ensure_proper_dtypes(df_input):
     
     return df_copy
 
-def monitor_memory_usage():
-    """Giám sát và báo cáo việc sử dụng bộ nhớ của ứng dụng"""
-    import gc
-    import os
-    
-    # Tính toán bộ nhớ cơ bản
-    df_memory = 0
-    if df is not None:
-        df_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
-    
-    # Trả về thông tin cơ bản
-    memory_info = {
-        "dataframe_memory_mb": df_memory,
-    }
-    
-    return memory_info
+
 
 def lock_application():
     """Khóa ứng dụng và yêu cầu mật khẩu để mở khóa"""
@@ -485,7 +389,6 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
     Returns:
         pd.DataFrame: DataFrame hoàn chỉnh sau khi đọc
     """
-    import gc
     from pandas.io.excel._openpyxl import OpenpyxlReader
     
     # Trạng thái tiến trình
@@ -529,8 +432,6 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
         total_rows = 0
         
         for i, chunk in enumerate(reader):
-            # Tối ưu bộ nhớ ngay lập tức cho mỗi chunk
-            chunk = optimize_memory_usage(chunk)
             chunks.append(chunk)
             
             total_rows += len(chunk)
@@ -550,13 +451,6 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
         
             result = pd.concat(chunks, ignore_index=True)
         
-            # Giải phóng bộ nhớ chunks
-            chunks.clear()
-            gc.collect()
-        
-            # Tối ưu hóa lần cuối
-            result = optimize_memory_usage(result)
-            
             # Đảm bảo kiểu dữ liệu phù hợp cho các cột quan trọng
             result = ensure_proper_dtypes(result)
         
@@ -585,25 +479,8 @@ def select_file():
         root.update()  # Cập nhật giao diện ngay lập tức để hiển thị trạng thái
         
         try:
-            # Kiểm tra kích thước file
-            file_size = os.path.getsize(file_path) / (1024 * 1024)  # Kích thước file (MB)
-            is_large_file = file_size > config.get('memory_optimization', {}).get('large_file_threshold_mb', 5)
-            
-            if is_large_file:
-                status_label.config(text=f"Đang phân tích file lớn ({file_size:.1f} MB)...", 
-                                  style="StatusWarning.TLabel")
-                root.update()
-                
-                # Kiểm tra xem có bật lazy loading hay không
-                if config.get('memory_optimization', {}).get('lazy_loading', True):
-                    chunk_size = config.get('memory_optimization', {}).get('chunk_size', 1000)
-                    df = load_excel_lazily(file_path, chunk_size=chunk_size)
-                else:
-                    # Đọc theo cách thông thường nếu không sử dụng lazy loading
-                    df = read_excel_normally(file_path)
-            else:
-                # Đọc file nhỏ theo cách thông thường
-                df = read_excel_normally(file_path)
+            # Đọc file Excel bình thường
+            df = read_excel_file(file_path)
             
             if df is not None and not df.empty:
                 # Hiển thị số lượng học sinh
@@ -613,22 +490,11 @@ def select_file():
                     style="StatusSuccess.TLabel"
                 )
                 
-                # Tối ưu hóa bộ nhớ nếu được cấu hình
-                if config.get('memory_optimization', {}).get('auto_optimize', True):
-                    df = optimize_memory_usage(df)
-                
                 # Đảm bảo các cột cần thiết tồn tại
                 df = ensure_required_columns(df)
                 
                 # Cập nhật giao diện
                 refresh_ui()
-                
-                # Báo cáo sử dụng bộ nhớ
-                memory_info = monitor_memory_usage()
-                if 'dataframe_memory_mb' in memory_info:
-                    df_memory = memory_info['dataframe_memory_mb']
-                    if df_memory > 100:  # Hiển thị cảnh báo nếu dữ liệu lớn
-                        print(f"Cảnh báo: DataFrame đang sử dụng {df_memory:.1f} MB bộ nhớ")
             else:
                 status_label.config(
                     text="Không có dữ liệu để hiển thị, vui lòng tải file Excel có dữ liệu",
@@ -2823,8 +2689,9 @@ def read_excel_file(file_path):
         status_label.config(text=f"Lỗi: {str(e)}", style="StatusCritical.TLabel")
         messagebox.showerror("Lỗi", f"Không thể đọc file Excel: {str(e)}")
         traceback.print_exc()
-        return pd.DataFrame()  # Trả về DataFrame rỗng khi có lỗi
-
+        return pd.DataFrame()  # Trả về DataFrame rỗng khi có lỗi 
+    
+    
 def auto_update_stats():
     """Tự động cập nhật thống kê theo chu kỳ"""
     # Cập nhật thống kê
