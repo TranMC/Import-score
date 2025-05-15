@@ -43,14 +43,6 @@ def check_dependencies():
         "openpyxl>=3.1.0"
     ]
     
-    # Kiểm tra psutil (tùy chọn)
-    try:
-        import psutil
-        log("Đã phát hiện psutil, sẽ bao gồm trong build.", "INFO")
-    except ImportError:
-        log("Không tìm thấy psutil. Ứng dụng vẫn sẽ hoạt động nhưng không có các tính năng giám sát bộ nhớ nâng cao.", "WARNING")
-        required_packages.append("psutil>=5.9.0")
-    
     # Cài đặt các phụ thuộc thiếu
     missing_packages = []
     for package in required_packages:
@@ -275,14 +267,6 @@ def build_executable(version, config_files):
         'openpyxl',
         'openpyxl.cell'
     ]
-    
-    # Kiểm tra xem có psutil không và thêm vào nếu có
-    try:
-        import psutil
-        hidden_imports.append('psutil')
-        log("Đã thêm psutil vào danh sách hidden imports", "INFO")
-    except ImportError:
-        log("Bỏ qua psutil vì không tìm thấy module", "WARNING")
     
     # Thêm hidden imports vào options
     for imp in hidden_imports:

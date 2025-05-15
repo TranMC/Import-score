@@ -327,40 +327,10 @@ def monitor_memory_usage():
     if df is not None:
         df_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
     
-    # Tạo thông tin cơ bản mà không cần psutil
+    # Trả về thông tin cơ bản
     memory_info = {
         "dataframe_memory_mb": df_memory,
     }
-    
-    # Thử sử dụng psutil nếu có
-    try:
-        import psutil
-        
-        # Cưỡng chế thu gom rác để có số liệu chính xác
-        gc.collect()
-        
-        # Lấy thông tin bộ nhớ
-        process = psutil.Process(os.getpid())
-        memory_info_ext = process.memory_info()
-        
-        # Tính toán sử dụng bộ nhớ
-        memory_usage_mb = memory_info_ext.rss / (1024 * 1024)
-        
-        # Bổ sung thông tin chi tiết
-        memory_info.update({
-            "total_memory_mb": memory_usage_mb,
-            "other_memory_mb": memory_usage_mb - df_memory,
-            "process_info": {
-                "pid": os.getpid(),
-                "cpu_percent": process.cpu_percent(interval=0.1),
-                "memory_percent": process.memory_percent()
-            }
-        })
-    except ImportError:
-        # Không có psutil, chỉ trả về thông tin cơ bản đã tạo ở trên
-        pass
-    except Exception as e:
-        print(f"Lỗi theo dõi bộ nhớ: {str(e)}")
     
     return memory_info
 

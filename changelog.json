@@ -1,4 +1,9 @@
 {   
+    "2.5.0":[
+        "Loại bỏ phụ thuộc vào psutil",
+        "Tối ưu hóa việc theo dõi bộ nhớ",
+        "Giảm kích thước ứng dụng"
+    ],
     "2.4.0":[
         "Vứt tính năng memory fix đi"
     ],    
