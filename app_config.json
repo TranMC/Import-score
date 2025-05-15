@@ -67,7 +67,7 @@
         "dark_mode": false,
         "responsive": {
             "initial_width": 1000,
-            "initial_height": 850,
+            "initial_height": 870,
             "min_width": 800,
             "min_height": 600
         }
