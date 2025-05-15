@@ -26,23 +26,27 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
         bool: True nếu có phiên bản mới, False nếu không
     """
     try:
+        # Cập nhật UI nếu có status_label
+        if status_label:
+            status_label.config(text="Đang kiểm tra phiên bản mới...", style="StatusInfo.TLabel")
+            if root:
+                root.update_idletasks()
+                
+        print("Bắt đầu kiểm tra cập nhật...")
+        
         # URL của GitHub API để kiểm tra phiên bản mới nhất
         github_api_url = "https://api.github.com/repos/TranMC/Import-score/releases/latest"
         
-        # Hiển thị thông báo đang kiểm tra
-        if show_notification:
-            if status_label:
-                status_label.config(text="Đang kiểm tra phiên bản mới...", style="StatusInfo.TLabel")
-                root.update()
-        
-        # Gọi API để lấy thông tin phiên bản mới nhất với timeout bị tăng lên và headers
+        # Gọi API để lấy thông tin phiên bản mới nhất với timeout được tăng lên và headers
         headers = {
             'User-Agent': 'QuanLyDiemHocSinh-App',
             'Accept': 'application/vnd.github.v3+json'
         }
-        response = requests.get(github_api_url, headers=headers, timeout=10)
+        print(f"Đang kết nối tới GitHub API: {github_api_url}")
+        response = requests.get(github_api_url, headers=headers, timeout=30)  # Tăng timeout lên 30 giây
         
         # Kiểm tra kết quả
+        print(f"Mã phản hồi từ GitHub API: {response.status_code}")
         if response.status_code == 200:
             release_info = response.json()
             
@@ -58,9 +62,13 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
             if current_version > latest_version and not is_dev:
                 # Thông báo cho người dùng biết họ đang sử dụng phiên bản phát triển
                 if show_notification:
-                    if file_path:
-                        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
+                    if status_label:
+                        status_label.config(text=f"Đang sử dụng phiên bản phát triển ({current_version})", style="StatusWarning.TLabel")
                     messagebox.showinfo("Phiên bản phát triển", f"Bạn đang sử dụng phiên bản phát triển ({current_version} dev version). Phiên bản phát hành mới nhất là {latest_version}.")
+                else:
+                    # Khi tự động kiểm tra, cập nhật thanh trạng thái
+                    if status_label:
+                        status_label.config(text=f"Phiên bản phát triển ({current_version})", style="StatusWarning.TLabel")
                 return False
                 
             # So sánh phiên bản
@@ -87,9 +95,11 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                         if download_url:
                             try:
                                 # Hiển thị thông báo đang tải
-                                status_label.config(text=f"Đang tải phiên bản mới {latest_version}...", 
-                                                 style="StatusWarning.TLabel")
-                                root.update()
+                                if status_label:
+                                    status_label.config(text=f"Đang tải phiên bản mới {latest_version}...", 
+                                                      style="StatusWarning.TLabel")
+                                    if root:
+                                        root.update_idletasks()
                                 
                                 # Tạo thư mục tạm để tải xuống
                                 temp_dir = os.path.join(os.path.expanduser("~"), "Downloads")
@@ -279,8 +289,9 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                                     os.startfile(temp_file)
                                     root.after(1000, root.destroy)
                                 
-                                status_label.config(text=f"Đã tải phiên bản mới {latest_version}", 
-                                                  style="StatusSuccess.TLabel")
+                                if status_label:
+                                    status_label.config(text=f"Đã tải phiên bản mới {latest_version}", 
+                                                      style="StatusSuccess.TLabel")
                             except Exception as download_error:
                                 messagebox.showerror("Lỗi tải xuống", 
                                                 f"Không thể tải phiên bản mới: {str(download_error)}\n\nVui lòng tải thủ công từ trang web.")
@@ -289,68 +300,117 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                         else:
                             import webbrowser
                             webbrowser.open(release_info.get('html_url', ''))
+                else:
+                    # Khi tự động kiểm tra, cập nhật thanh trạng thái
+                    if status_label:
+                        status_label.config(text=f"Có phiên bản mới! {latest_version}", style="StatusWarning.TLabel")
+                        if root:
+                            root.update_idletasks()
                 
-                if file_path:
-                    status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
+                if file_path and status_label:
+                    status_label.config(text=f"Có phiên bản mới ({latest_version})! Đã tải file: {os.path.basename(file_path)}", style="StatusWarning.TLabel")
                 return True
             else:
                 # Không có phiên bản mới
                 if show_notification:
-                    if file_path:
+                    if file_path and status_label:
                         status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
                     messagebox.showinfo("Cập nhật", f"Bạn đang sử dụng phiên bản mới nhất ({current_version}).")
+                else:
+                    # Khi tự động kiểm tra, cập nhật thanh trạng thái
+                    if status_label:
+                        status_label.config(text=f"Đang sử dụng phiên bản mới nhất ({current_version})", style="StatusGood.TLabel")
+                        if root:
+                            root.update_idletasks()
                 return False
         else:
             # Lỗi kết nối
+            print(f"Lỗi kết nối đến GitHub API, mã: {response.status_code}")
             if show_notification:
-                if file_path:
+                if file_path and status_label:
                     status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusError.TLabel")
                 messagebox.showwarning("Lỗi kết nối", f"Không thể kết nối đến máy chủ GitHub. Mã lỗi: {response.status_code}")
+            else:
+                # Khi tự động kiểm tra, cập nhật thanh trạng thái
+                if status_label:
+                    status_label.config(text=f"Không thể kết nối đến máy chủ GitHub. Mã: {response.status_code}", style="StatusError.TLabel")
+                    if root:
+                        root.update_idletasks()
             return False
     
     except requests.exceptions.ConnectionError as e:
         # Lỗi kết nối mạng cụ thể
+        print(f"Lỗi kết nối: {str(e)}")
         if show_notification:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", "Không thể kết nối đến máy chủ GitHub. Vui lòng kiểm tra kết nối mạng của bạn.")
-        print(f"Lỗi kết nối: {str(e)}")
+        else:
+            # Khi chạy tự động, vẫn cập nhật status_label nếu có
+            if status_label:
+                status_label.config(text="Không thể kết nối đến máy chủ GitHub", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
         return False
     
     except requests.exceptions.Timeout as e:
         # Lỗi timeout
+        print(f"Lỗi timeout: {str(e)}")
         if show_notification:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", "Máy chủ GitHub phản hồi quá chậm. Vui lòng thử lại sau.")
-        print(f"Lỗi timeout: {str(e)}")
+        else:
+            # Khi chạy tự động, vẫn cập nhật status_label nếu có
+            if status_label:
+                status_label.config(text="Máy chủ GitHub phản hồi quá chậm", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
         return False
         
     except requests.RequestException as e:
         # Xử lý lỗi request khác
+        print(f"Lỗi request: {str(e)}")
         if show_notification:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi kết nối", f"Không thể kiểm tra phiên bản mới: {str(e)}")
-        print(f"Lỗi request: {str(e)}")
+        else:
+            # Khi tự động kiểm tra, cập nhật thanh trạng thái
+            if status_label:
+                status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
         return False
     
     except json.JSONDecodeError as e:
         # Lỗi khi parse JSON
+        print(f"Lỗi parse JSON: {str(e)}")
         if show_notification:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi dữ liệu", "Không thể đọc thông tin phiên bản từ máy chủ. Định dạng dữ liệu không hợp lệ.")
-        print(f"Lỗi parse JSON: {str(e)}")
+        else:
+            # Khi tự động kiểm tra, cập nhật thanh trạng thái
+            if status_label:
+                status_label.config(text="Lỗi định dạng dữ liệu từ máy chủ", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
         return False
     
     except Exception as e:
         # Xử lý các lỗi khác
+        print(f"Lỗi không xác định: {str(e)}")
         if show_notification:
             if file_path and status_label:
                 status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}", style="StatusGood.TLabel")
             messagebox.showwarning("Lỗi", f"Đã xảy ra lỗi khi kiểm tra phiên bản mới: {str(e)}")
-        print(f"Lỗi không xác định: {str(e)}")
+        else:
+            # Khi tự động kiểm tra, cập nhật thanh trạng thái
+            if status_label:
+                status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
         return False
 
 def check_updates_async(root, status_label, file_path, config, save_config):
@@ -365,8 +425,29 @@ def check_updates_async(root, status_label, file_path, config, save_config):
         save_config: Hàm lưu cấu hình
     """
     print("Starting async check for updates...")
+    
+    # Cập nhật UI trước khi bắt đầu kiểm tra
+    if status_label:
+        status_label.config(text="Đang kiểm tra cập nhật...", style="StatusInfo.TLabel")
+        if root:
+            root.update_idletasks()
+    
+    # Tạo một thread riêng để kiểm tra cập nhật
+    def check_update_thread():
+        try:
+            # Thay đổi tham số show_notification thành True để hiển thị thông báo cập nhật
+            result = check_for_updates(root, status_label, file_path, config, save_config, True)
+            print(f"Update check completed, result: {result}")
+        except Exception as e:
+            print(f"Error in update check thread: {str(e)}")
+            # Cập nhật UI nếu có lỗi
+            if status_label:
+                status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
+                if root:
+                    root.update_idletasks()
+    
     threading.Thread(
-        target=lambda: check_for_updates(root, status_label, file_path, config, save_config, False), 
+        target=check_update_thread, 
         daemon=True
     ).start()
     print("Update check thread started")
@@ -398,4 +479,4 @@ if __name__ == "__main__":
     
     # Kiểm tra cập nhật
     result = check_for_updates(None, None, None, dummy_config, dummy_save_config, True)
-    print(f"Update check result: {'Updates available' if result else 'No updates available or error occurred'}") 
+    print(f"Update check result: {'Updates available' if result else 'No updates available or error occurred'}")

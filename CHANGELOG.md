@@ -1,3 +1,12 @@
+## Version 2.3.5
+### Date: 15/05/2024 08:23:53
+### Changes:
+- Thêm tính năng tự động kiểm tra cập nhật khi khởi động ứng dụng
+- Cải thiện giao diện người dùng
+- Sửa lỗi không hiển thị mã đề trong một số trường hợp
+- Khắc phục lỗi không tìm thấy mã đề trong file Excel
+
+--------------------------------------------------
 ## Version 2.3.1
 ### Date: 14/05/2024 15:59:07
 ### Changes:

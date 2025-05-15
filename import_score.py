@@ -2283,22 +2283,28 @@ def check_for_updates_wrapper(show_notification=True):
     Returns:
         bool: True nếu có phiên bản mới, False nếu không
     """
-    # Sử dụng hàm được tách ra từ module check_for_updates
-    from check_for_updates import check_for_updates
-    return check_for_updates(root, status_label, file_path, config, save_config, show_notification)
+    # Sử dụng hàm được tách ra từ module check_for_updates để sửa lỗi
+    try:
+        from check_for_updates import check_for_updates
+        return check_for_updates(root, status_label, file_path, config, save_config, show_notification)
+    except ImportError:
+        # Nếu không tìm thấy module fixed, dùng module gốc
+        from check_for_updates import check_for_updates
+        return check_for_updates(root, status_label, file_path, config, save_config, show_notification)
 
 def check_updates_async():
     """Kiểm tra cập nhật trong luồng riêng biệt để không làm đóng băng giao diện"""
     # Sử dụng hàm từ module check_for_updates
     print("import_score: Gọi check_updates_async - kiểm tra cập nhật tự động khi khởi động")
-    # Thay đổi cách gọi hàm, trực tiếp gọi check_for_updates
-    from check_for_updates import check_for_updates
-    # Tạo thread để tránh việc làm đóng băng giao diện
-    threading.Thread(
-        target=lambda: check_for_updates(root, status_label, file_path, config, save_config, False),
-        daemon=True
-    ).start()
-    print("import_score: Đã khởi động thread kiểm tra cập nhật")
+    try:
+        from check_for_updates import check_updates_async
+        # Gọi hàm check_updates_async với các tham số cần thiết
+        check_updates_async(root, status_label, file_path, config, save_config)
+    except ImportError:
+        # Nếu không tìm thấy module fixed, dùng module gốc
+        from check_for_updates import check_updates_async
+        check_updates_async(root, status_label, file_path, config, save_config)
+    print("import_score: Đã gọi check_updates_async từ module")
 
 def update_stats():
     """Cập nhật các thống kê cơ bản"""
@@ -2900,7 +2906,11 @@ root.bind_all("<KeyPress>", update_activity_time)
 check_auto_lock()
 
 # Kiểm tra cập nhật sau khi khởi động (tăng thời gian delay để đảm bảo giao diện đã được tạo hoàn chỉnh)
+print("Lên lịch kiểm tra cập nhật tự động sau 5 giây...")
 root.after(5000, check_updates_async)
+
+# Hiện thông báo khi đã sẵn sàng
+status_label.config(text="Ứng dụng đã sẵn sàng! Đang kiểm tra cập nhật...", style="StatusInfo.TLabel")
 
 # Bắt đầu cập nhật thống kê tự động
 root.after(1000, auto_update_stats)
