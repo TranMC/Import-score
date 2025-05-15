@@ -95,7 +95,7 @@ def check_source_code():
         "themes.py",
         "ui_utils.py",
         "version_utils.py",
-        "check_for_updates_fixed.py"  # Sử dụng file đã sửa
+        "check_for_updates.py"  # Sử dụng file chính thay vì file đã sửa
     ]
     
     try:
@@ -183,8 +183,7 @@ def prepare_build_environment():
         log(f"Đã tìm thấy UPX trong thư mục: {upx_dir}", "INFO")
     else:
         log("Không tìm thấy UPX. Build sẽ không được nén. Bạn có thể tải UPX từ https://github.com/upx/upx/releases", "WARNING")
-    
-    # Sử dụng phiên bản fixed của file check_for_updates.py
+      # Sử dụng phiên bản fixed của file check_for_updates.py
     check_updates_fixed = os.path.join(current_dir, "check_for_updates_fixed.py")
     check_updates = os.path.join(current_dir, "check_for_updates.py")
     
@@ -198,6 +197,8 @@ def prepare_build_environment():
         # Copy file fixed để sử dụng
         shutil.copy(check_updates_fixed, check_updates)
         log("Đã sử dụng file check_for_updates_fixed.py cho build", "SUCCESS")
+    else:
+        log("Không tìm thấy file check_for_updates_fixed.py, sẽ sử dụng file check_for_updates.py hiện có", "INFO")
     
     log("Môi trường build đã sẵn sàng", "SUCCESS")
     
@@ -286,10 +287,9 @@ def build_executable(version, config_files):
     # Thêm hidden imports vào options
     for imp in hidden_imports:
         options.append(f'--hidden-import={imp}')
-    
-    # Các tùy chọn tối ưu hóa bổ sung
+      # Các tùy chọn tối ưu hóa bổ sung
     optimization_options = [
-        '--noupx-exclude=vcruntime140.dll',  # Không loại trừ dll này khi nén
+        # Loại bỏ tùy chọn không hợp lệ noupx-exclude
         '--strip',  # Xóa thông tin gỡ lỗi để giảm kích thước
         '--log-level=INFO',  # Mức log khi build
     ]
