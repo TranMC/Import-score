@@ -326,13 +326,13 @@ def build_executable(version, config_files):
         log(f"Lỗi khi build: {str(e)}", "ERROR")
         sys.exit(1)
 
-def build_with_spec(spec_file):
+def build_with_spec(spec_file, additional_options=[]):
     """Build using a specific spec file instead of command line options"""
     log(f"Bắt đầu build sử dụng spec file: {spec_file}...", "INFO")
     
     try:
         import PyInstaller.__main__
-        PyInstaller.__main__.run([spec_file, '--clean'])
+        PyInstaller.__main__.run([spec_file, '--clean'] + additional_options)
         log(f"Build với spec file hoàn thành!", "SUCCESS")
         return True
     except Exception as e:
@@ -362,7 +362,47 @@ def main():
     improved_spec = os.path.join(os.path.dirname(os.path.abspath(__file__)), "improved_spec.spec")
     if os.path.exists(improved_spec):
         log("Tìm thấy spec file cải tiến, ưu tiên sử dụng để tránh lỗi encoding", "INFO")
-        success = build_with_spec(improved_spec)
+        
+        # Đảm bảo chúng ta có môi trường build sạch
+        build_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "build")
+        if os.path.exists(build_dir):
+            log("Xóa thư mục build cũ để đảm bảo build mới hoàn toàn", "INFO")
+            try:
+                shutil.rmtree(build_dir)
+            except Exception as e:
+                log(f"Không thể xóa thư mục build: {str(e)}", "WARNING")
+        
+        # Thêm runtime hooks để giải quyết vấn đề DLL
+        hooks_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks")
+        if not os.path.exists(hooks_dir):
+            os.makedirs(hooks_dir)
+            log(f"Đã tạo thư mục hooks: {hooks_dir}", "INFO")
+        
+        # Tạo runtime hook để xử lý DLL
+        dll_hook_path = os.path.join(hooks_dir, "hook-runtime-dll-fix.py")
+        with open(dll_hook_path, "w", encoding="utf-8") as f:
+            f.write("""
+# -*- coding: utf-8 -*-
+# Runtime hook để giải quyết vấn đề tải Python DLL
+import os
+import sys
+
+def fix_dll_path():
+    # Đặt cố định đường dẫn DLL
+    if hasattr(sys, '_MEIPASS'):
+        # Thay đổi thư mục làm việc để đảm bảo tìm được DLL
+        bundle_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
+        # Đặt thư mục này vào PATH để dễ tìm DLL
+        os.environ['PATH'] = bundle_dir + os.pathsep + os.environ.get('PATH', '')
+
+# Chạy ngay khi module được import
+fix_dll_path()
+""")
+        log(f"Đã tạo runtime hook để sửa lỗi tải DLL", "SUCCESS")
+        
+        # Chạy với options bổ sung
+        log("Chạy PyInstaller với spec file và runtime hooks bổ sung", "INFO")
+        success = build_with_spec(improved_spec, ["--additional-hooks-dir", hooks_dir])
     else:
         # Build ứng dụng bằng các tùy chọn thông thường
         log("Không tìm thấy spec file cải tiến, sử dụng tùy chọn dòng lệnh", "INFO")

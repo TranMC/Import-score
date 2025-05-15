@@ -50,6 +50,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install openpyxl>=3.1.0
+        
+        # Cài đặt PyInstaller phiên bản cụ thể, đã được kiểm tra và hoạt động tốt
+        pip uninstall -y pyinstaller
+        pip install pyinstaller==5.13.2
       shell: pwsh
     
     - name: Check for errors in script
@@ -75,6 +79,18 @@ jobs:
         python -c "import sys; print(f'Python version: {sys.version}')"
         python -c "import sys; print(f'Python executable: {sys.executable}')"
         python -c "import sys; print(f'Python encoding: {sys.getdefaultencoding()}')"
+        
+        # Kiểm tra PyInstaller đã có chưa
+        python -c "import PyInstaller; print(f'PyInstaller version: {PyInstaller.__version__}')"
+        
+        # Kiểm tra spec file đã tồn tại chưa
+        if (Test-Path improved_spec.spec) {
+          Write-Host "improved_spec.spec already exists"
+        } else {
+          Write-Host "Creating improved_spec.spec"
+          # Sao chép từ đường dẫn khác nếu có
+          # Copy-Item "template_spec.spec" -Destination "improved_spec.spec" -Force
+        }
       shell: pwsh
     
     - name: Generate version and changelog
