@@ -135,12 +135,30 @@ jobs:
         echo -e "\n## ⚙️ Thông tin build" >> release_description.md
         echo "- **Phiên bản:** v$VERSION" >> release_description.md
         echo "- **Ngày phát hành:** $BUILD_DATE" >> release_description.md
+        echo "- **Tên mã:** $(cat ./artifacts/version.json | grep -o '"code_name": "[^"]*"' | cut -d'"' -f4)" >> release_description.md
+        
+        echo -e "\n## 🔍 Tính năng chính" >> release_description.md
+        echo "- ✅ Nhập và quản lý điểm học sinh" >> release_description.md
+        echo "- ✅ Tự động tính toán điểm từ số câu đúng" >> release_description.md
+        echo "- ✅ Xuất báo cáo thống kê dạng PDF" >> release_description.md
+        echo "- ✅ Biểu đồ phân phối điểm trực quan" >> release_description.md
+        echo "- ✅ Giao diện thân thiện và dễ sử dụng" >> release_description.md
+        echo "- ✅ Hỗ trợ chế độ tối/sáng" >> release_description.md
+        
         echo -e "\n## 📥 Tải về" >> release_description.md
-        echo "- **[⬇️ Tải về file EXE](https://github.com/TranMC/Import-score/releases/download/v$VERSION/Student%20Score%20Import%20v$VERSION.exe)** để cài đặt trực tiếp" >> release_description.md
+        echo "- **[⬇️ Tải về file EXE](https://github.com/TranMC/Import-score/releases/download/v$VERSION/Student.Score.Import.v$VERSION.exe)** để cài đặt trực tiếp" >> release_description.md
+
         echo -e "\n## 📝 Hướng dẫn sử dụng" >> release_description.md
-        echo "- Tải về và chạy file EXE" >> release_description.md
-        echo "- Chọn file Excel chứa danh sách điểm" >> release_description.md
-        echo "- Sử dụng các chức năng nhập điểm, tìm kiếm và xuất báo cáo" >> release_description.md
+        echo "1. Tải về và chạy file EXE" >> release_description.md
+        echo "2. Chọn file Excel chứa danh sách điểm" >> release_description.md
+        echo "3. Sử dụng các chức năng nhập điểm, tìm kiếm và xuất báo cáo" >> release_description.md
+        
+        echo -e "\n## 🔄 Cập nhật" >> release_description.md
+        echo "Phần mềm sẽ tự động kiểm tra cập nhật mới khi khởi động" >> release_description.md
+        
+        echo -e "\n---" >> release_description.md
+        echo "📅 Build tự động từ GitHub Actions ngày $(date +%d/%m/%Y)" >> release_description.md
+        
         cat release_description.md
       shell: bash
         
@@ -150,7 +168,7 @@ jobs:
       with:
         files: ./release_files/*.exe
         tag_name: v${{ env.VERSION }}
-        name: 📊 Quản lý điểm học sinh v${{ env.VERSION }}
+        name: 📊 Phần mềm Quản lý Điểm Học Sinh v${{ env.VERSION }} 🚀
         body_path: ./release_description.md
         draft: false
         prerelease: false

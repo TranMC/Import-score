@@ -1,4 +1,8 @@
-{   "2.3.7":
+{   "2.3.8": [
+        "Sửa lại file build",
+        "Nothing changed"
+    ],
+    "2.3.7":
     [
         "Sửa lại file lỗi báo lỗi cột không tồn tại trong file Excel",
         "Sửa lại file changelog"
