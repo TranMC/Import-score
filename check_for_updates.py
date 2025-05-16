@@ -492,13 +492,13 @@ def show_update_channel_dialog(root, config, save_config, callback=None):
     """
     dialog = tk.Toplevel(root)
     dialog.title("Chọn kênh cập nhật")
-    dialog.geometry("400x320")  # Tăng chiều cao để chắc chắn hiển thị đủ các thành phần
+    dialog.geometry("400x320")
     dialog.transient(root)
     dialog.resizable(False, False)
     
-    # Đặt cửa sổ ở giữa màn hình
-    position_x = int(root.winfo_x() + (root.winfo_width() / 2) - (400 / 2))
-    position_y = int(root.winfo_y() + (root.winfo_height() / 2) - (320 / 2))
+    # Đặt cửa sổ ở giữa màn hình chính
+    position_x = max(0, int(root.winfo_x() + (root.winfo_width() / 2) - 200))
+    position_y = max(0, int(root.winfo_y() + (root.winfo_height() / 2) - 160))
     dialog.geometry(f"400x320+{position_x}+{position_y}")
     
     # Thiết lập frame chính
@@ -519,35 +519,37 @@ def show_update_channel_dialog(root, config, save_config, callback=None):
     options_frame = ttk.Frame(main_frame)
     options_frame.pack(fill="x", pady=10)
     
+    # Các tham số chung cho labels
+    label_font = (config['ui']['font_family'], 9)
+    label_fg = config['ui']['theme'].get('text_secondary', '#757575')
+    
     # Tùy chọn kênh ổn định
     stable_frame = ttk.Frame(options_frame)
     stable_frame.pack(fill="x", pady=5)
     
-    stable_radio = ttk.Radiobutton(stable_frame, 
-                                   text="Kênh ổn định", 
-                                   variable=channel_var, 
-                                   value=UPDATE_CHANNEL_STABLE)
-    stable_radio.pack(side="left")
+    ttk.Radiobutton(stable_frame, 
+                   text="Kênh ổn định", 
+                   variable=channel_var, 
+                   value=UPDATE_CHANNEL_STABLE).pack(side="left")
     
     ttk.Label(stable_frame,
              text="Chỉ nhận các bản cập nhật chính thức",
-             font=(config['ui']['font_family'], 9),
-             foreground=config['ui']['theme'].get('text_secondary', '#757575')).pack(side="left", padx=10)
+             font=label_font,
+             foreground=label_fg).pack(side="left", padx=10)
     
     # Tùy chọn kênh phát triển
     dev_frame = ttk.Frame(options_frame)
     dev_frame.pack(fill="x", pady=5)
     
-    dev_radio = ttk.Radiobutton(dev_frame, 
-                                text="Kênh phát triển", 
-                                variable=channel_var, 
-                                value=UPDATE_CHANNEL_DEV)
-    dev_radio.pack(side="left")
+    ttk.Radiobutton(dev_frame, 
+                    text="Kênh phát triển", 
+                    variable=channel_var, 
+                    value=UPDATE_CHANNEL_DEV).pack(side="left")
     
     ttk.Label(dev_frame,
              text="Nhận cả bản pre-release và các tính năng mới",
-             font=(config['ui']['font_family'], 9),
-             foreground=config['ui']['theme'].get('text_secondary', '#757575')).pack(side="left", padx=10)
+             font=label_font,
+             foreground=label_fg).pack(side="left", padx=10)
     
     # Mô tả thêm
     description_text = (
@@ -557,15 +559,14 @@ def show_update_channel_dialog(root, config, save_config, callback=None):
         "nhưng có thể chứa lỗi. Phù hợp với người dùng muốn trải nghiệm sớm."
     )
     
-    description_label = ttk.Label(main_frame,
-                                 text=description_text,
-                                 font=(config['ui']['font_family'], 9),
-                                 foreground=config['ui']['theme'].get('text_secondary', '#757575'),
-                                 wraplength=370,
-                                 justify="left")
-    description_label.pack(fill="x", pady=10)
+    ttk.Label(main_frame,
+             text=description_text,
+             font=label_font,
+             foreground=label_fg,
+             wraplength=370,
+             justify="left").pack(fill="x", pady=10)
     
-    # Frame cho các nút - đặt ở cuối và chiều cao cố định
+    # Frame cho các nút
     button_frame = ttk.Frame(main_frame, height=50)
     button_frame.pack(side="bottom", fill="x", pady=10)
     button_frame.pack_propagate(False)  # Giữ kích thước cố định
@@ -573,37 +574,29 @@ def show_update_channel_dialog(root, config, save_config, callback=None):
     # Hàm lưu thay đổi
     def save_channel():
         selected_channel = channel_var.get()
-        # Cập nhật cấu hình
         config['update_channel'] = selected_channel
         save_config()
         
-        # Hiển thị thông báo đã lưu
         messagebox.showinfo("Thành công", f"Đã lưu cấu hình kênh cập nhật: {selected_channel}")
-        
         dialog.destroy()
         
         # Gọi callback nếu có
         if callback:
             callback(selected_channel)
     
-    # Nút lưu - làm lớn hơn và rõ ràng hơn
-    save_button = ttk.Button(button_frame, 
-                             text="Lưu thay đổi", 
-                             command=save_channel,
-                             width=15)  # Đặt chiều rộng cố định
-    save_button.pack(side="right", padx=5)
+    # Nút lưu và hủy
+    ttk.Button(button_frame, 
+               text="Lưu thay đổi", 
+               command=save_channel,
+               width=15).pack(side="right", padx=5)
     
-    # Nút hủy
-    cancel_button = ttk.Button(button_frame, 
-                               text="Hủy bỏ", 
-                               command=dialog.destroy,
-                               width=10)
-    cancel_button.pack(side="right", padx=5)
+    ttk.Button(button_frame, 
+               text="Hủy bỏ", 
+               command=dialog.destroy,
+               width=10).pack(side="right", padx=5)
     
-    # Đặt focus vào dialog
+    # Đặt focus và chế độ modal
     dialog.focus_set()
-    
-    # Chế độ modal
     dialog.grab_set()
     dialog.wait_window()
     
@@ -620,33 +613,28 @@ def check_updates_async(root, status_label, file_path, config, save_config):
         config: Dictionary chứa cấu hình ứng dụng
         save_config: Hàm lưu cấu hình
     """
-    print("Starting async check for updates...")
-    
     # Cập nhật UI trước khi bắt đầu kiểm tra
     if status_label:
         status_label.config(text="Đang kiểm tra cập nhật...", style="StatusInfo.TLabel")
-        if root:
-            root.update_idletasks()
+        root and root.update_idletasks()
     
     # Tạo một thread riêng để kiểm tra cập nhật
     def check_update_thread():
         try:
-            # Thay đổi tham số show_notification thành True để hiển thị thông báo cập nhật
             result = check_for_updates(root, status_label, file_path, config, save_config, True)
-            print(f"Update check completed, result: {result}")
+            print(f"Kết quả kiểm tra cập nhật: {result}")
         except Exception as e:
-            print(f"Error in update check thread: {str(e)}")
-            # Cập nhật UI nếu có lỗi
+            print(f"Lỗi trong thread kiểm tra cập nhật: {str(e)}")
             if status_label:
                 status_label.config(text="Lỗi khi kiểm tra cập nhật", style="StatusError.TLabel")
-                if root:
-                    root.update_idletasks()
+                root and root.update_idletasks()
     
-    threading.Thread(
+    # Tạo và khởi động thread
+    update_thread = threading.Thread(
         target=check_update_thread,
         daemon=True
-    ).start()
-    print("Update check thread started")
+    )
+    update_thread.start()
 
 def download_file_multipart(url, target_path, num_workers=4, chunk_size=1024*1024, progress_callback=None):
     """
