@@ -1,4 +1,7 @@
 {   
+    "2.7.0-pre":[
+        "Thêm tính năng chọn kênh cập nhật"
+    ],
     "2.6.0":[
         "Xóa hoàn toàn tất cả tính năng liên quan đến memory",
         "Đơn giản hóa mã nguồn",
