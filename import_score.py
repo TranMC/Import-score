@@ -1994,6 +1994,7 @@ def create_ui():
     settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)
     settings_menu.add_command(label="Bảo mật", command=customize_security)
     settings_menu.add_separator()
+    settings_menu.add_command(label="Chọn kênh cập nhật", command=choose_update_channel)
     settings_menu.add_command(label="Chế độ tối/sáng", command=lambda: toggle_theme(style))
     
     # Menu Chức năng
@@ -2702,6 +2703,22 @@ def auto_update_stats():
     # Thiết lập lịch cập nhật tiếp theo (5 giây)
     root.after(5000, auto_update_stats)
 
+def choose_update_channel():
+    """
+    Hiển thị hộp thoại để người dùng chọn kênh cập nhật
+    """
+    try:
+        from check_for_updates import show_update_channel_dialog
+        
+        def on_channel_changed(new_channel):
+            # Cập nhật UI sau khi thay đổi kênh
+            status_label.config(text=f"Đã chuyển sang kênh cập nhật: {new_channel}")
+            
+        show_update_channel_dialog(root, config, save_config, callback=on_channel_changed)
+    except ImportError as e:
+        print(f"Lỗi khi nhập module show_update_channel_dialog: {str(e)}")
+        messagebox.showerror("Lỗi", "Không thể mở dialog chọn kênh cập nhật.")
+
 # Khởi tạo giao diện
 create_ui()
 
@@ -2720,6 +2737,7 @@ settings_menu.add_command(label="Tùy chỉnh mã đề", command=customize_exam
 settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)
 settings_menu.add_command(label="Bảo mật", command=customize_security)
 settings_menu.add_separator()
+settings_menu.add_command(label="Chọn kênh cập nhật", command=choose_update_channel)
 settings_menu.add_command(label="Chế độ tối/sáng", command=lambda: toggle_theme(style))
 
 # Menu Chức năng

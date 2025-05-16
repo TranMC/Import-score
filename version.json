@@ -1,6 +1,7 @@
 {
-    "version": "2.6.0",
+    "version": "2.7.0-pre",
     "is_dev": true,
-    "build_date": "2025-05-15",
-    "code_name": "Release Version"
+    "build_date": "2025-05-16",
+    "code_name": "Release Version",
+    "release_channel": "stable"
 }

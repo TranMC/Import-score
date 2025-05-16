@@ -15,6 +15,10 @@ import stat
 import sys
 # Các thư viện khác sẽ được import khi cần
 
+# Các hằng số cho kênh cập nhật
+UPDATE_CHANNEL_STABLE = "stable"
+UPDATE_CHANNEL_DEV = "dev"
+
 def check_for_updates(root, status_label, file_path, config, save_config, show_notification=True):
     """
     Kiểm tra phiên bản mới trên GitHub
@@ -30,16 +34,19 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
     Returns:
         bool: True nếu có phiên bản mới, False nếu không
     """
+    # Lấy kênh cập nhật từ cấu hình, mặc định là stable
+    update_channel = config.get('update_channel', UPDATE_CHANNEL_STABLE)
+    
     # Cập nhật UI nếu có status_label
     if status_label:
         status_label.config(text="Đang kiểm tra phiên bản mới...", style="StatusInfo.TLabel")
         if root:
             root.update_idletasks()
         
-    print("Bắt đầu kiểm tra cập nhật...")
+    print(f"Bắt đầu kiểm tra cập nhật (kênh: {update_channel})...")
     
     # URL của GitHub API để kiểm tra phiên bản mới nhất
-    github_api_url = "https://api.github.com/repos/TranMC/Import-score/releases/latest"
+    github_api_url = "https://api.github.com/repos/TranMC/Import-score/releases"
     
     # Gọi API để lấy thông tin phiên bản mới nhất với timeout được tăng lên và headers
     headers = {
@@ -52,7 +59,23 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
     # Kiểm tra kết quả
     print(f"Mã phản hồi từ GitHub API: {response.status_code}")
     if response.status_code == 200:
-        release_info = response.json()
+        releases = response.json()
+        
+        # Lọc release theo kênh
+        if update_channel == UPDATE_CHANNEL_STABLE:
+            # Chỉ lấy các bản release chính thức (không phải pre-release)
+            filtered_releases = [r for r in releases if not r.get('prerelease', False)]
+        else:
+            # Lấy tất cả các bản release kể cả pre-release
+            filtered_releases = releases
+        
+        if not filtered_releases:
+            if show_notification:
+                messagebox.showinfo("Không tìm thấy phiên bản", f"Không tìm thấy phiên bản nào trong kênh {update_channel}.")
+            return False
+            
+        # Lấy phiên bản mới nhất từ danh sách đã lọc
+        release_info = filtered_releases[0]
         
         # Lấy phiên bản mới nhất
         latest_version = release_info.get('tag_name', '').lstrip('v')
@@ -61,6 +84,7 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
         version_info = version_utils.load_version_info()
         current_version = version_info.get('version', '0.0.0')
         is_dev = version_info.get('is_dev', False)
+        release_channel = version_info.get('release_channel', UPDATE_CHANNEL_STABLE)
         
         # Kiểm tra nếu phiên bản hiện tại cao hơn phiên bản mới nhất, đánh dấu là dev
         if current_version > latest_version and not is_dev:
@@ -79,7 +103,8 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
                 result = messagebox.askyesno(
                     "Có phiên bản mới",
                     f"Đã phát hiện phiên bản mới: {latest_version}\n"
-                    f"Phiên bản hiện tại: {current_version}\n\n"
+                    f"Phiên bản hiện tại: {current_version}\n"
+                    f"Kênh cập nhật: {update_channel}\n\n"
                     f"Tính năng mới:\n{release_notes[:200]}{'...' if len(release_notes) > 200 else ''}\n\n"
                     "Bạn có muốn tải phiên bản mới không?"
                 )
@@ -452,6 +477,138 @@ def check_for_updates(root, status_label, file_path, config, save_config, show_n
             print(f"Lỗi kết nối đến GitHub API, mã: {response.status_code}")
         return False
 
+def show_update_channel_dialog(root, config, save_config, callback=None):
+    """
+    Hiển thị hộp thoại để người dùng chọn kênh cập nhật
+    
+    Args:
+        root: Cửa sổ chính của ứng dụng
+        config: Dictionary chứa cấu hình ứng dụng
+        save_config: Hàm lưu cấu hình
+        callback: Hàm callback để gọi sau khi cập nhật cấu hình
+        
+    Returns:
+        str: Kênh cập nhật đã chọn
+    """
+    dialog = tk.Toplevel(root)
+    dialog.title("Chọn kênh cập nhật")
+    dialog.geometry("400x320")  # Tăng chiều cao để chắc chắn hiển thị đủ các thành phần
+    dialog.transient(root)
+    dialog.resizable(False, False)
+    
+    # Đặt cửa sổ ở giữa màn hình
+    position_x = int(root.winfo_x() + (root.winfo_width() / 2) - (400 / 2))
+    position_y = int(root.winfo_y() + (root.winfo_height() / 2) - (320 / 2))
+    dialog.geometry(f"400x320+{position_x}+{position_y}")
+    
+    # Thiết lập frame chính
+    main_frame = ttk.Frame(dialog, padding=15)
+    main_frame.pack(fill="both", expand=True)
+    
+    # Tiêu đề
+    ttk.Label(main_frame, 
+              text="Chọn kênh cập nhật", 
+              font=(config['ui']['font_family'], 12, 'bold'),
+              foreground=config['ui']['theme']['primary']).pack(pady=(0, 10))
+    
+    # Giá trị kênh hiện tại
+    current_channel = config.get('update_channel', UPDATE_CHANNEL_STABLE)
+    channel_var = tk.StringVar(value=current_channel)
+    
+    # Frame cho các tùy chọn
+    options_frame = ttk.Frame(main_frame)
+    options_frame.pack(fill="x", pady=10)
+    
+    # Tùy chọn kênh ổn định
+    stable_frame = ttk.Frame(options_frame)
+    stable_frame.pack(fill="x", pady=5)
+    
+    stable_radio = ttk.Radiobutton(stable_frame, 
+                                   text="Kênh ổn định", 
+                                   variable=channel_var, 
+                                   value=UPDATE_CHANNEL_STABLE)
+    stable_radio.pack(side="left")
+    
+    ttk.Label(stable_frame,
+             text="Chỉ nhận các bản cập nhật chính thức",
+             font=(config['ui']['font_family'], 9),
+             foreground=config['ui']['theme'].get('text_secondary', '#757575')).pack(side="left", padx=10)
+    
+    # Tùy chọn kênh phát triển
+    dev_frame = ttk.Frame(options_frame)
+    dev_frame.pack(fill="x", pady=5)
+    
+    dev_radio = ttk.Radiobutton(dev_frame, 
+                                text="Kênh phát triển", 
+                                variable=channel_var, 
+                                value=UPDATE_CHANNEL_DEV)
+    dev_radio.pack(side="left")
+    
+    ttk.Label(dev_frame,
+             text="Nhận cả bản pre-release và các tính năng mới",
+             font=(config['ui']['font_family'], 9),
+             foreground=config['ui']['theme'].get('text_secondary', '#757575')).pack(side="left", padx=10)
+    
+    # Mô tả thêm
+    description_text = (
+        "Kênh ổn định cung cấp các phiên bản đã được kiểm tra kỹ lưỡng, phù hợp "
+        "với người dùng thông thường.\n\n"
+        "Kênh phát triển cung cấp các phiên bản mới nhất với tính năng mới nhất, "
+        "nhưng có thể chứa lỗi. Phù hợp với người dùng muốn trải nghiệm sớm."
+    )
+    
+    description_label = ttk.Label(main_frame,
+                                 text=description_text,
+                                 font=(config['ui']['font_family'], 9),
+                                 foreground=config['ui']['theme'].get('text_secondary', '#757575'),
+                                 wraplength=370,
+                                 justify="left")
+    description_label.pack(fill="x", pady=10)
+    
+    # Frame cho các nút - đặt ở cuối và chiều cao cố định
+    button_frame = ttk.Frame(main_frame, height=50)
+    button_frame.pack(side="bottom", fill="x", pady=10)
+    button_frame.pack_propagate(False)  # Giữ kích thước cố định
+    
+    # Hàm lưu thay đổi
+    def save_channel():
+        selected_channel = channel_var.get()
+        # Cập nhật cấu hình
+        config['update_channel'] = selected_channel
+        save_config()
+        
+        # Hiển thị thông báo đã lưu
+        messagebox.showinfo("Thành công", f"Đã lưu cấu hình kênh cập nhật: {selected_channel}")
+        
+        dialog.destroy()
+        
+        # Gọi callback nếu có
+        if callback:
+            callback(selected_channel)
+    
+    # Nút lưu - làm lớn hơn và rõ ràng hơn
+    save_button = ttk.Button(button_frame, 
+                             text="Lưu thay đổi", 
+                             command=save_channel,
+                             width=15)  # Đặt chiều rộng cố định
+    save_button.pack(side="right", padx=5)
+    
+    # Nút hủy
+    cancel_button = ttk.Button(button_frame, 
+                               text="Hủy bỏ", 
+                               command=dialog.destroy,
+                               width=10)
+    cancel_button.pack(side="right", padx=5)
+    
+    # Đặt focus vào dialog
+    dialog.focus_set()
+    
+    # Chế độ modal
+    dialog.grab_set()
+    dialog.wait_window()
+    
+    return channel_var.get()
+
 def check_updates_async(root, status_label, file_path, config, save_config):
     """
     Kiểm tra cập nhật trong luồng riêng biệt để không làm đóng băng giao diện
@@ -486,7 +643,7 @@ def check_updates_async(root, status_label, file_path, config, save_config):
                     root.update_idletasks()
     
     threading.Thread(
-        target=check_update_thread, 
+        target=check_update_thread,
         daemon=True
     ).start()
     print("Update check thread started")

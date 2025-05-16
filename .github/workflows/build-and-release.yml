@@ -23,6 +23,7 @@ jobs:
     outputs:
       version: ${{ env.VERSION }}
       build_date: ${{ env.BUILD_DATE }}
+      is_dev: ${{ env.IS_DEV }}
     
     steps:
     - uses: actions/checkout@v4
@@ -86,6 +87,14 @@ jobs:
         echo "VERSION=$VERSION" >> $env:GITHUB_ENV
       shell: pwsh
     
+    - name: Check if development build
+      run: |
+        $versionJson = Get-Content -Path version.json | ConvertFrom-Json
+        $isDev = $versionJson.is_dev.ToString().ToLower()
+        echo "IS_DEV=$isDev" >> $env:GITHUB_ENV
+        Write-Host "Build type: $(if ($isDev -eq 'true') { 'Development (Pre-release)' } else { 'Stable (Release)' })"
+      shell: pwsh
+    
     - name: Update build date
       run: |
         python update_build_date.py
@@ -130,6 +139,7 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
       BUILD_DATE: ${{ needs.build.outputs.build_date }}
+      IS_DEV: ${{ needs.build.outputs.is_dev }}
     
     steps:
     - uses: actions/checkout@v4
@@ -154,6 +164,11 @@ jobs:
           BUILD_DATE=$(cat ./artifacts/version.json | grep -o '"build_date": "[^"]*"' | cut -d'"' -f4)
           echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_ENV
           echo "Found build date: $BUILD_DATE"
+          
+          # Đọc is_dev từ version.json
+          IS_DEV=$(cat ./artifacts/version.json | grep -o '"is_dev": [^,]*' | cut -d':' -f2 | tr -d ' ')
+          echo "IS_DEV=$IS_DEV" >> $GITHUB_ENV
+          echo "Is development build: $IS_DEV"
         else
           echo "Warning: version.json not found in artifacts"
         fi
@@ -210,6 +225,6 @@ jobs:
         name: 📊 Phần mềm Quản lý Điểm Học Sinh v${{ env.VERSION }} 🚀
         body_path: ./release_description.md
         draft: false
-        prerelease: false
+        prerelease: ${{ env.IS_DEV == 'true' }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
