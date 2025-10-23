@@ -1,4 +1,9 @@
-{   "2.7.5-alpha":[
+{   
+    "2.8.5-alpha": [
+        "Cập nhật thư viện bên trong",
+        "Sửa lỗi nhỏ về giao diện người dùng"
+    ],
+    "2.7.5-alpha":[
         "Tối ưu hoá lại code thừa"
     ],
     "2.7.0-pre":[

@@ -33,7 +33,7 @@ def center_window(window, width=None, height=None):
 
 def apply_styles(config, style, root):
     """
-    Áp dụng style cho ttk widgets dựa trên config
+    Áp dụng style hiện đại cho ttk widgets dựa trên config
     
     Args:
         config (dict): Cấu hình ứng dụng
@@ -46,112 +46,264 @@ def apply_styles(config, style, root):
     theme = config['ui']['theme']
     dark_mode = config['ui'].get('dark_mode', False)
     
-    # Font mặc định
+    # Ensure theme compatibility - add missing keys if needed
+    theme = themes.ensure_theme_compatibility(theme)
+    config['ui']['theme'] = theme
+    
+    # Font mặc định với anti-aliasing
     default_font = (font_family, font_sizes['normal'])
     heading_font = (font_family, font_sizes['heading'], 'bold')
-    button_font = (font_family, font_sizes['button'])
+    button_font = (font_family, font_sizes['button'], 'bold')
     
     # Sử dụng theme cơ sở dễ tùy chỉnh nhất
     style.theme_use('clam')
     
-    # Cấu hình theme
-    # Frame
-    style.configure('TFrame', background=theme['background'])
-    style.configure('TLabelframe', background=theme['background'], bordercolor=theme['border'])
-    style.configure('TLabelframe.Label', font=heading_font, foreground=theme['primary'], background=theme['background'])
+    # ===== MODERN FRAME STYLES =====
+    style.configure('TFrame', 
+                   background=theme['background'])
     
-    # Label
-    style.configure('TLabel', font=default_font, background=theme['background'], foreground=theme['text'])
+    style.configure('Card.TFrame', 
+                   background=theme['card'],
+                   relief='flat',
+                   borderwidth=0)
     
-    # Button
-    style.configure('TButton', font=button_font, background=theme['primary'], foreground='white', borderwidth=0)
+    style.configure('TLabelframe', 
+                   background=theme['card'],
+                   bordercolor=theme['border'],
+                   relief='solid',
+                   borderwidth=1)
+    
+    style.configure('TLabelframe.Label', 
+                   font=heading_font,
+                   foreground=theme['primary'],
+                   background=theme['card'])
+    
+    # ===== MODERN LABEL STYLES =====
+    style.configure('TLabel', 
+                   font=default_font,
+                   background=theme['background'],
+                   foreground=theme['text'])
+    
+    # ===== MODERN BUTTON STYLES =====
+    style.configure('TButton', 
+                   font=button_font,
+                   background=theme['primary'],
+                   foreground='white',
+                   borderwidth=0,
+                   focuscolor='none',
+                   padding=(20, 10),
+                   relief='flat')
+    
     style.map('TButton',
+             foreground=[('pressed', 'white'), ('active', 'white'), ('disabled', theme['text_secondary'])],
+             background=[('pressed', theme['active']), 
+                        ('active', theme['primary_dark']),
+                        ('disabled', theme['disabled'])],
+             relief=[('pressed', 'flat'), ('active', 'flat')])
+    
+    # Accent Button Style
+    style.configure('Accent.TButton',
+                   font=button_font,
+                   background=theme['accent'],
+                   foreground='white',
+                   borderwidth=0,
+                   focuscolor='none',
+                   padding=(20, 10),
+                   relief='flat')
+    
+    style.map('Accent.TButton',
              foreground=[('pressed', 'white'), ('active', 'white')],
-             background=[('pressed', theme['active']), ('active', theme['hover'])])
+             background=[('pressed', theme['accent']), ('active', theme['accent'])],
+             relief=[('pressed', 'flat'), ('active', 'flat')])
     
-    # Entry
-    style.configure('TEntry', font=default_font, fieldbackground=theme['card'], 
-                  foreground=theme['text'], bordercolor=theme['border'])
+    # Success Button
+    style.configure('Success.TButton',
+                   font=button_font,
+                   background=theme['success'],
+                   foreground='white',
+                   borderwidth=0,
+                   focuscolor='none',
+                   padding=(20, 10),
+                   relief='flat')
     
-    # Combobox
-    style.configure('TCombobox', font=default_font, 
-                  fieldbackground=theme['card'], 
-                  foreground=theme['text'],
-                  bordercolor=theme['border'],
-                  arrowcolor=theme['primary'])
+    # Warning Button
+    style.configure('Warning.TButton',
+                   font=button_font,
+                   background=theme['warning'],
+                   foreground='white',
+                   borderwidth=0,
+                   focuscolor='none',
+                   padding=(20, 10),
+                   relief='flat')
+    
+    # ===== MODERN ENTRY STYLES =====
+    style.configure('TEntry', 
+                   font=default_font,
+                   fieldbackground=theme['card'],
+                   foreground=theme['text'],
+                   bordercolor=theme['border'],
+                   lightcolor=theme['primary'],
+                   darkcolor=theme['primary'],
+                   borderwidth=2,
+                   relief='solid',
+                   padding=8)
+    
+    style.map('TEntry',
+             fieldbackground=[('focus', theme['card'])],
+             bordercolor=[('focus', theme['primary']), ('!focus', theme['border'])],
+             lightcolor=[('focus', theme['primary'])],
+             darkcolor=[('focus', theme['primary'])])
+    
+    # ===== MODERN COMBOBOX STYLES =====
+    style.configure('TCombobox', 
+                   font=default_font,
+                   fieldbackground=theme['card'],
+                   foreground=theme['text'],
+                   bordercolor=theme['border'],
+                   arrowcolor=theme['primary'],
+                   borderwidth=2,
+                   relief='solid',
+                   padding=8)
+    
     style.map('TCombobox',
-            fieldbackground=[('readonly', theme['card']), ('disabled', theme['background'])],
-            selectbackground=[('readonly', theme['selected'])],
-            selectforeground=[('readonly', 'white')])
+             fieldbackground=[('readonly', theme['card']), 
+                            ('disabled', theme['background']),
+                            ('focus', theme['card'])],
+             selectbackground=[('readonly', theme['selected'])],
+             selectforeground=[('readonly', 'white')],
+             bordercolor=[('focus', theme['primary']), ('!focus', theme['border'])],
+             arrowcolor=[('disabled', theme['disabled']), ('!disabled', theme['primary'])])
     
-    # Combobox dropdown (popup) - cải thiện để áp dụng hiệu quả hơn
+    # Combobox dropdown styling
     if root:
         try:
             root.option_add('*TCombobox*Listbox.background', theme['card'])
             root.option_add('*TCombobox*Listbox.foreground', theme['text'])
-            root.option_add('*TCombobox*Listbox.selectBackground', theme['selected'])
+            root.option_add('*TCombobox*Listbox.selectBackground', theme['primary'])
             root.option_add('*TCombobox*Listbox.selectForeground', 'white')
+            root.option_add('*TCombobox*Listbox.font', default_font)
             
-            # Áp dụng ngay cho tất cả combobox hiện có
             for widget in root.winfo_children():
                 if isinstance(widget, ttk.Combobox):
                     widget.configure(style='TCombobox')
         except Exception as e:
             print(f"Lỗi khi cấu hình combobox dropdown: {str(e)}")
     
-    # Heading
-    style.configure('Heading.TLabel', font=heading_font, foreground=theme['primary'])
+    # ===== MODERN TREEVIEW STYLES =====
+    # Font lớn hơn cho Treeview
+    treeview_font = (font_family, font_sizes['normal'] + 1)  # Tăng 1pt
+    treeview_heading_font = (font_family, font_sizes['heading'], 'bold')
     
-    # Treeview
-    style.configure('Treeview', font=default_font, rowheight=28, 
-                   background=theme['treeview_bg'], fieldbackground=theme['treeview_bg'],
-                   foreground=theme['text'])
-    style.configure('Treeview.Heading', font=heading_font, 
-                   background=theme['primary'], foreground='white')
+    style.configure('Treeview', 
+                   font=treeview_font,
+                   rowheight=40,  # Tăng từ 35 lên 40
+                   background=theme['treeview_bg'],
+                   fieldbackground=theme['treeview_bg'],
+                   foreground=theme['text'],
+                   borderwidth=0,
+                   relief='flat')
+    
+    style.configure('Treeview.Heading', 
+                   font=treeview_heading_font,
+                   background=theme['primary'],
+                   foreground='white',
+                   borderwidth=0,
+                   relief='flat',
+                   padding=12)  # Tăng padding
+    
     style.map('Treeview',
              background=[('selected', theme['treeview_selected'])],
              foreground=[('selected', 'white')])
     
-    # Scrollbar - cải thiện tính nhìn thấy của scrollbar trong dark mode
+    style.map('Treeview.Heading',
+             background=[('active', theme['primary_dark'])],
+             foreground=[('active', 'white')])
+    
+    # ===== MODERN SCROLLBAR STYLES =====
     scrollbar_bg = theme['background'] if not dark_mode else theme['card']
     scrollbar_trough = theme['card'] if not dark_mode else theme['background']
     
-    style.configure('TScrollbar', background=scrollbar_bg, 
-                  troughcolor=scrollbar_trough,
-                  bordercolor=theme['border'],
-                  arrowcolor=theme['text'])
+    style.configure('TScrollbar',
+                   background=theme['primary'],
+                   troughcolor=scrollbar_trough,
+                   bordercolor=scrollbar_trough,
+                   arrowcolor='white',
+                   borderwidth=0,
+                   relief='flat',
+                   width=12)
+    
     style.map('TScrollbar',
-            background=[('active', theme['primary']), ('disabled', theme['disabled'])])
+             background=[('active', theme['primary_dark']), 
+                        ('pressed', theme['active']),
+                        ('disabled', theme['disabled'])])
     
-    # Progressbar
-    style.configure('TProgressbar', 
-                  background=theme['primary'],
-                  troughcolor=theme['background'],
-                  bordercolor=theme['border'])
+    # ===== MODERN PROGRESSBAR =====
+    style.configure('TProgressbar',
+                   background=theme['primary'],
+                   troughcolor=theme['background'],
+                   bordercolor=theme['border'],
+                   lightcolor=theme['primary'],
+                   darkcolor=theme['primary'],
+                   borderwidth=0,
+                   thickness=8)
     
-    # Checkbutton
-    style.configure('TCheckbutton', 
-                  font=default_font,
-                  background=theme['background'],
-                  foreground=theme['text'])
+    # ===== MODERN CHECKBUTTON =====
+    style.configure('TCheckbutton',
+                   font=default_font,
+                   background=theme['background'],
+                   foreground=theme['text'])
     
-    # Status Labels
-    style.configure('Status.TLabel', font=default_font, background=theme['card'], foreground=theme['text'])
-    style.configure('StatusGood.TLabel', font=default_font, background=theme['card'], foreground=theme['success'])
-    style.configure('StatusWarning.TLabel', font=default_font, background=theme['card'], foreground=theme['warning'])
-    style.configure('StatusCritical.TLabel', font=default_font, background=theme['card'], foreground=theme['error'])
-    style.configure('StatusError.TLabel', font=default_font, background=theme['card'], foreground=theme['error'])
-    style.configure('StatusInfo.TLabel', font=default_font, background=theme['card'], foreground=theme['primary'])
+    style.map('TCheckbutton',
+             background=[('active', theme['hover'])],
+             foreground=[('disabled', theme['disabled'])])
     
-    # Card Frame
-    style.configure('Card.TFrame', background=theme['card'])
+    # ===== STATUS LABEL STYLES =====
+    style.configure('Status.TLabel', 
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['text'],
+                   padding=5)
     
-    # Thiết lập màu nền cho cửa sổ root (không phải ttk)
+    style.configure('StatusGood.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['success'])
+    
+    style.configure('StatusSuccess.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['success'])
+    
+    style.configure('StatusWarning.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['warning'])
+    
+    style.configure('StatusCritical.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['error'])
+    
+    style.configure('StatusError.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['error'])
+    
+    style.configure('StatusInfo.TLabel',
+                   font=default_font,
+                   background=theme['card'],
+                   foreground=theme['info'])
+    
+    # ===== HEADING LABEL =====
+    style.configure('Heading.TLabel',
+                   font=heading_font,
+                   foreground=theme['primary'],
+                   background=theme['background'])
+    
+    # ===== ROOT WINDOW STYLING =====
     if root:
-        # Cập nhật màu nền chính cho cửa sổ
         root.configure(bg=theme['background'])
         
-        # Đặc biệt xử lý combobox để đảm bảo cập nhật đúng
         root.tk_setPalette(
             background=theme['background'],
             foreground=theme['text'],
@@ -159,16 +311,21 @@ def apply_styles(config, style, root):
             activeForeground='white'
         )
         
-        # Đặt màu cho menu (nếu có)
+        # Menu styling
         try:
             menu_name = root.cget('menu')
             if menu_name:
                 menu = root.nametowidget(menu_name)
                 if menu:
-                    menu.configure(background=theme['card'], foreground=theme['text'],
-                                activebackground=theme['selected'], activeforeground='white')
+                    menu.configure(
+                        background=theme['card'],
+                        foreground=theme['text'],
+                        activebackground=theme['primary'],
+                        activeforeground='white',
+                        borderwidth=0,
+                        relief='flat'
+                    )
                     
-                    # Cập nhật các submenu
                     for i in range(menu.index('end') + 1 if menu.index('end') is not None else 0):
                         try:
                             submenu = menu.nametowidget(menu.entrycget(i, 'menu'))
@@ -176,15 +333,16 @@ def apply_styles(config, style, root):
                                 submenu.configure(
                                     background=theme['card'],
                                     foreground=theme['text'],
-                                    activebackground=theme['selected'],
-                                    activeforeground='white'
+                                    activebackground=theme['primary'],
+                                    activeforeground='white',
+                                    borderwidth=0,
+                                    relief='flat'
                                 )
                         except:
                             pass
         except Exception as e:
             print(f"Lỗi khi cập nhật menu: {str(e)}")
     
-    # Cập nhật cửa sổ
     if root:
         root.update_idletasks()
     
@@ -192,7 +350,7 @@ def apply_styles(config, style, root):
 
 def toggle_dark_mode(config, style, root):
     """
-    Chuyển đổi giữa chế độ sáng và tối
+    Chuyển đổi giữa chế độ sáng và tối với cập nhật mượt mà
     
     Args:
         config (dict): Cấu hình ứng dụng
@@ -202,103 +360,130 @@ def toggle_dark_mode(config, style, root):
     Returns:
         dict: Cấu hình đã được cập nhật
     """
-    # Lấy trạng thái dark mode hiện tại - đã được cập nhật bởi hàm gọi toggle_theme
     dark_mode = config['ui'].get('dark_mode', False)
     print(f"UI Utils - Đang áp dụng chế độ: {'Tối' if dark_mode else 'Sáng'}")
     
     # Áp dụng theme mới
     config = themes.apply_theme_to_config(config, dark_mode)
+    theme = config['ui']['theme']
     
     # Áp dụng style mới
     apply_styles(config, style, root)
     
-    # Cập nhật màu nền cho tất cả widget
-    theme = config['ui']['theme']
-    
-    # Cấu hình lại tất cả widget con để đảm bảo chúng được cập nhật
-    def update_widget_styles(widget):
+    # Hàm cập nhật widget đệ quy
+    def update_widget_recursively(widget):
         try:
-            # Cập nhật các widget là ttk
+            widget_class = widget.winfo_class()
+            
+            # Cập nhật TTK widgets
             if isinstance(widget, ttk.Widget):
-                # Đặc biệt xử lý một số loại widget cụ thể
                 if isinstance(widget, ttk.Treeview):
-                    # Cập nhật style cho Treeview
                     widget.configure(style='Treeview')
-                    for child_id in widget.get_children():
-                        widget.item(child_id, tags=())
                 elif isinstance(widget, ttk.Combobox):
-                    # Đặc biệt cập nhật style cho Combobox
                     widget.configure(style='TCombobox')
-                    # Đảm bảo dropdown list được cập nhật
-                    if hasattr(widget, 'tk'):
-                        widget.tk.eval(f"""
-                        option add *TCombobox*Listbox.background {theme['card']} widgetDefault
-                        option add *TCombobox*Listbox.foreground {theme['text']} widgetDefault
-                        option add *TCombobox*Listbox.selectBackground {theme['selected']} widgetDefault
-                        option add *TCombobox*Listbox.selectForeground white widgetDefault
-                        """)
                 elif isinstance(widget, ttk.Entry):
-                    # Cập nhật style cho Entry
                     widget.configure(style='TEntry')
-                
-            # Cập nhật cho widget tkinter thuần
-            elif isinstance(widget, tk.Widget):
-                if isinstance(widget, tk.Text):
-                    widget.configure(bg=theme['card'], fg=theme['text'])
-                elif isinstance(widget, tk.Entry):
-                    widget.configure(bg=theme['card'], fg=theme['text'])
-                elif isinstance(widget, tk.Label):
-                    widget.configure(bg=theme['background'], fg=theme['text'])
-                elif isinstance(widget, tk.Frame) or isinstance(widget, tk.LabelFrame):
-                    widget.configure(bg=theme['background'])
+                elif isinstance(widget, ttk.Button):
+                    # Giữ nguyên style riêng của button
+                    current_style = str(widget.cget('style'))
+                    if current_style:
+                        widget.configure(style=current_style)
+                elif isinstance(widget, ttk.Label):
+                    current_style = str(widget.cget('style'))
+                    if current_style:
+                        widget.configure(style=current_style)
+                elif isinstance(widget, ttk.Frame):
+                    current_style = str(widget.cget('style'))
+                    if current_style:
+                        widget.configure(style=current_style)
                     
-                # Cập nhật menu
-                if isinstance(widget, tk.Menu):
+            # Cập nhật Tkinter thuần widgets
+            elif isinstance(widget, tk.Widget):
+                if widget_class == 'Text':
+                    widget.configure(bg=theme['card'], fg=theme['text'], 
+                                   insertbackground=theme['text'])
+                elif widget_class == 'Entry':
+                    widget.configure(bg=theme['card'], fg=theme['text'], 
+                                   insertbackground=theme['text'])
+                elif widget_class == 'Label':
+                    # Chỉ cập nhật nếu không có bg riêng (không phải header)
+                    current_bg = widget.cget('bg')
+                    if current_bg == theme.get('old_background', theme['background']) or \
+                       current_bg in ['SystemButtonFace', '#f0f0f0', 'white']:
+                        widget.configure(bg=theme['background'], fg=theme['text'])
+                elif widget_class == 'Frame':
+                    current_bg = widget.cget('bg')
+                    # Giữ nguyên primary color cho header
+                    if current_bg not in [theme.get('old_primary', ''), theme['primary']]:
+                        widget.configure(bg=theme['background'])
+                elif widget_class == 'LabelFrame':
+                    widget.configure(bg=theme['background'], fg=theme['text'])
+                elif widget_class == 'Menu':
                     widget.configure(
                         background=theme['card'],
                         foreground=theme['text'],
-                        activebackground=theme['selected'],
-                        activeforeground='white'
+                        activebackground=theme['primary'],
+                        activeforeground='white',
+                        borderwidth=0
                     )
             
-            # Đệ quy qua các widget con
-            children = widget.winfo_children()
-            for child in children:
-                update_widget_styles(child)
+            # Đệ quy cập nhật con
+            for child in widget.winfo_children():
+                update_widget_recursively(child)
+                
         except Exception as e:
-            print(f"Lỗi khi cập nhật widget: {str(e)}")
+            # Bỏ qua lỗi để tiếp tục với widgets khác
             pass
-
-    # Cập nhật toàn bộ cây widget
-    update_widget_styles(root)
     
-    # Cập nhật menu
+    # Lưu old values để so sánh
+    theme['old_background'] = theme['background']
+    theme['old_primary'] = theme['primary']
+    
+    # Cập nhật root window
+    root.configure(bg=theme['background'])
+    
+    # Cập nhật toàn bộ cây widget
+    update_widget_recursively(root)
+    
+    # Cập nhật combobox dropdown
+    try:
+        root.option_add('*TCombobox*Listbox.background', theme['card'])
+        root.option_add('*TCombobox*Listbox.foreground', theme['text'])
+        root.option_add('*TCombobox*Listbox.selectBackground', theme['primary'])
+        root.option_add('*TCombobox*Listbox.selectForeground', 'white')
+    except:
+        pass
+    
+    # Cập nhật menu bar
     try:
         menubar = root.nametowidget(root.cget('menu'))
         if menubar:
             menubar.configure(
                 background=theme['card'],
                 foreground=theme['text'],
-                activebackground=theme['selected'],
-                activeforeground='white'
+                activebackground=theme['primary'],
+                activeforeground='white',
+                borderwidth=0
             )
-            # Cập nhật tất cả menu con
-            for i in range(menubar.index('end') + 1):
+            
+            # Cập nhật submenus
+            for i in range(menubar.index('end') + 1 if menubar.index('end') is not None else 0):
                 try:
                     submenu = menubar.nametowidget(menubar.entrycget(i, 'menu'))
                     if submenu:
                         submenu.configure(
                             background=theme['card'],
                             foreground=theme['text'],
-                            activebackground=theme['selected'],
-                            activeforeground='white'
+                            activebackground=theme['primary'],
+                            activeforeground='white',
+                            borderwidth=0
                         )
                 except:
                     pass
-    except Exception as e:
-        print(f"Lỗi khi cập nhật menu: {str(e)}")
+    except:
+        pass
     
-    # Force update giao diện
+    # Force update
     root.update_idletasks()
     
     return config
@@ -333,7 +518,7 @@ def init_responsive_settings(root, config):
 
 def create_dark_mode_switch(parent, config, style, root, save_config):
     """
-    Tạo switch để chuyển đổi giữa chế độ sáng và tối
+    Tạo switch để chuyển đổi giữa chế độ sáng và tối với update mượt mà
     
     Args:
         parent: Widget cha chứa switch
@@ -343,45 +528,50 @@ def create_dark_mode_switch(parent, config, style, root, save_config):
         save_config: Hàm lưu cấu hình
         
     Returns:
-        ttk.Frame: Frame chứa switch
+        tk.Frame: Frame chứa switch
     """
-    switch_frame = ttk.Frame(parent)
+    # Sử dụng Frame tk thuần để dễ cập nhật màu
+    switch_frame = tk.Frame(parent, bg=config['ui']['theme']['primary'])
     
     # Tạo variable để theo dõi trạng thái
     is_dark_mode = config['ui'].get('dark_mode', False)
-    dark_mode_var = tk.BooleanVar(value=is_dark_mode)
-    
-    # Cấu hình style cho checkbutton
-    theme = config['ui']['theme']
-    
-    # Tạo style cho button điều khiển dark mode rõ ràng hơn
-    style.configure('Switch.TCheckbutton', 
-                  background=theme['background'],
-                  foreground=theme['text'],
-                  font=(config['ui']['font_family'], config['ui']['font_size']['normal']))
     
     # Thêm emoji mặt trời/mặt trăng để dễ nhận biết hơn
-    mode_text = "☀️ Chế độ sáng" if is_dark_mode else "🌙 Chế độ tối"
+    mode_text = "☀️ Sáng" if is_dark_mode else "🌙 Tối"
     
-    # Tạo checkbutton làm switch
+    # Tạo button với tk thuần để dễ kiểm soát màu
+    switch = tk.Button(switch_frame, 
+                      text=mode_text,
+                      font=(config['ui']['font_family'], 9, 'bold'),
+                      bg='white' if is_dark_mode else '#2D3748',
+                      fg='#2D3748' if is_dark_mode else 'white',
+                      activebackground='#E2E8F0',
+                      activeforeground='#2D3748',
+                      relief='flat',
+                      bd=0,
+                      padx=12,
+                      pady=6,
+                      cursor='hand2')
+    
     def toggle_theme():
-        # Đảo ngược trạng thái dark mode trực tiếp trong config
+        # Đảo ngược trạng thái dark mode
         config['ui']['dark_mode'] = not config['ui']['dark_mode']
+        is_now_dark = config['ui']['dark_mode']
         
-        # Cập nhật cấu hình
+        # Cập nhật cấu hình theme
         updated_config = toggle_dark_mode(config, style, root)
         
         # Cập nhật config từ kết quả trả về
         for key in updated_config:
             config[key] = updated_config[key]
         
-        # Cập nhật text theo trạng thái mới
-        is_now_dark = config['ui']['dark_mode']
-        new_text = "☀️ Chế độ sáng" if is_now_dark else "🌙 Chế độ tối"
-        switch.config(text=new_text)
+        # Cập nhật button
+        new_text = "☀️ Sáng" if is_now_dark else "🌙 Tối"
+        new_bg = 'white' if is_now_dark else '#2D3748'
+        new_fg = '#2D3748' if is_now_dark else 'white'
         
-        # Đảm bảo trạng thái biến khớp với config
-        dark_mode_var.set(is_now_dark)
+        switch.config(text=new_text, bg=new_bg, fg=new_fg)
+        switch_frame.config(bg=config['ui']['theme']['primary'])
         
         # Lưu cấu hình
         save_config()
@@ -389,19 +579,7 @@ def create_dark_mode_switch(parent, config, style, root, save_config):
         # Force update toàn bộ giao diện
         root.update()
     
-    # Tạo nút chuyển đổi (không sử dụng Checkbutton vì có thể gây nhầm lẫn)
-    switch = ttk.Button(switch_frame, 
-                      text=mode_text,
-                      command=toggle_theme,
-                      style='Toggle.TButton',
-                      width=15)
-    
-    # Tạo style đặc biệt cho nút toggle
-    style.configure('Toggle.TButton', 
-                  font=(config['ui']['font_family'], config['ui']['font_size']['normal']),
-                  background=theme['primary'],
-                  foreground='white')
-    
-    switch.pack(side="right", padx=5)
+    switch.config(command=toggle_theme)
+    switch.pack(side="right")
     
     return switch_frame
