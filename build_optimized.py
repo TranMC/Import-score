@@ -169,19 +169,6 @@ def prepare_build_environment():
         os.makedirs("dist")
         log("Đã tạo thư mục dist", "INFO")
     
-    # Tạo thư mục hooks nếu chưa có
-    hooks_dir = os.path.join(current_dir, "hooks")
-    if not os.path.exists(hooks_dir):
-        os.makedirs(hooks_dir)
-        log("Đã tạo thư mục hooks", "INFO")
-    
-    # Copy hook file vào thư mục hooks
-    hook_file = os.path.join(current_dir, "hook-numpy.py")
-    if os.path.exists(hook_file):
-        hook_dest = os.path.join(hooks_dir, "hook-numpy.py")
-        shutil.copy(hook_file, hook_dest)
-        log("Đã copy hook-numpy.py vào thư mục hooks", "INFO")
-    
     # Kiểm tra UPX nếu có
     upx_dir = os.path.join(current_dir, "upx")
     if os.path.exists(upx_dir):
@@ -233,19 +220,36 @@ def build_executable(version, config_files):
         '--windowed',
         '--icon=app.ico',
         '--clean',
+        '--noconfirm',
+        '--noupx',  # Tắt UPX vì có thể gây lỗi với một số DLL
+        '--exclude-module=pkg_resources',  # Loại bỏ pkg_resources để tránh lỗi jaraco
         f'--add-data={app_config_file}{sep}.',
         f'--add-data={version_json_file}{sep}.',
         f'--add-data={changelog_json_file}{sep}.',
-        '--log-level=INFO',
+        '--log-level=WARN',
+        # Exclude các modules không cần thiết để giảm kích thước
         '--exclude-module=pytest',
         '--exclude-module=setuptools',
         '--exclude-module=pip',
         '--exclude-module=torch',
         '--exclude-module=tensorflow',
         '--exclude-module=scipy',
+        '--exclude-module=scipy.stats',
+        '--exclude-module=scipy.spatial',
+        '--exclude-module=scipy.special',
+        '--exclude-module=scipy.ndimage',
+        '--exclude-module=scipy.linalg',
+        '--exclude-module=jax',
+        '--exclude-module=IPython',
+        '--exclude-module=notebook',
+        '--exclude-module=jupyter',
         '--exclude-module=tkinter.test',
         '--exclude-module=unittest',
-        '--additional-hooks-dir=hooks',
+        '--exclude-module=test',
+        '--exclude-module=lib2to3',
+        # Collect mode cho numpy để tránh lỗi import từ source
+        '--collect-all=numpy',
+        '--copy-metadata=numpy',
     ]
     
     # Thêm UPX nếu có
@@ -254,33 +258,25 @@ def build_executable(version, config_files):
         options.append(f'--upx-dir={upx_dir}')
         log("Đã bật tính năng nén UPX", "INFO")
 
-    # Thêm các hidden imports cần thiết
+    # Thêm các hidden imports cần thiết (KHÔNG BAO GỒM NUMPY - đã dùng --collect-all)
     hidden_imports = [
-        # Pandas và các phụ thuộc (numpy sẽ được xử lý bởi hook)
+        # Pandas và các phụ thuộc (numpy sẽ được collect bởi --collect-all)
         'pandas._libs.tslibs.base',
         'pandas._libs.tslibs.np_datetime',
         'pandas._libs.tslibs.timedeltas',
         
         # Matplotlib và các phụ thuộc
-        'matplotlib',
         'matplotlib.backends.backend_tkagg',
         'matplotlib.figure',
         'matplotlib.backends.backend_pdf',
-        'matplotlib.colors',
-        'matplotlib.pyplot',
-        'matplotlib.rcsetup',
         
         # Các module khác
-        'PIL',
         'PIL._tkinter_finder',
-        'PIL.Image',
-        'cryptography',
         'themes',
         'ui_utils',
         'version_utils',
         'check_for_updates',
-        'openpyxl',
-        'openpyxl.cell'
+        'openpyxl.cell',
     ]
     
     # Thêm hidden imports vào options
@@ -288,7 +284,7 @@ def build_executable(version, config_files):
         options.append(f'--hidden-import={imp}')
     
     # Chạy PyInstaller với các options đã chuẩn bị
-    log(f"Chạy PyInstaller với cấu hình đơn giản", "INFO")
+    log(f"Chạy PyInstaller với numpy collect mode", "INFO")
     try:
         import PyInstaller.__main__
         PyInstaller.__main__.run(options)

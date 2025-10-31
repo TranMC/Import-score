@@ -4,7 +4,6 @@ Module để quản lý phiên bản và changelog
 
 import os
 import json
-import pkg_resources
 
 # Các hằng số cho kênh cập nhật
 UPDATE_CHANNEL_STABLE = "stable"
