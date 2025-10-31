@@ -1,7 +1,7 @@
 {
     "version": "2.8.5-alpha",
     "is_dev": true,
-    "build_date": "2025-05-16",
+    "build_date": "2025-10-31",
     "code_name": "Release Version",
     "release_channel": "stable"
 }

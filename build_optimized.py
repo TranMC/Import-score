@@ -234,6 +234,11 @@ def build_executable(version, config_files):
 
     # Thêm các hidden imports cần thiết
     hidden_imports = [
+        # NumPy - BẮT BUỘC (pandas phụ thuộc vào numpy)
+        'numpy',
+        'numpy.core',
+        'numpy.core._multiarray_umath',
+        
         # Pandas và các phụ thuộc
         'pandas._libs.tslibs.base',
         'pandas._libs.tslibs.np_datetime',
