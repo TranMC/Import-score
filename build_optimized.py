@@ -169,6 +169,19 @@ def prepare_build_environment():
         os.makedirs("dist")
         log("Đã tạo thư mục dist", "INFO")
     
+    # Tạo thư mục hooks nếu chưa có
+    hooks_dir = os.path.join(current_dir, "hooks")
+    if not os.path.exists(hooks_dir):
+        os.makedirs(hooks_dir)
+        log("Đã tạo thư mục hooks", "INFO")
+    
+    # Copy hook file vào thư mục hooks
+    hook_file = os.path.join(current_dir, "hook-numpy.py")
+    if os.path.exists(hook_file):
+        hook_dest = os.path.join(hooks_dir, "hook-numpy.py")
+        shutil.copy(hook_file, hook_dest)
+        log("Đã copy hook-numpy.py vào thư mục hooks", "INFO")
+    
     # Kiểm tra UPX nếu có
     upx_dir = os.path.join(current_dir, "upx")
     if os.path.exists(upx_dir):
@@ -224,6 +237,15 @@ def build_executable(version, config_files):
         f'--add-data={version_json_file}{sep}.',
         f'--add-data={changelog_json_file}{sep}.',
         '--log-level=INFO',
+        '--exclude-module=pytest',
+        '--exclude-module=setuptools',
+        '--exclude-module=pip',
+        '--exclude-module=torch',
+        '--exclude-module=tensorflow',
+        '--exclude-module=scipy',
+        '--exclude-module=tkinter.test',
+        '--exclude-module=unittest',
+        '--additional-hooks-dir=hooks',
     ]
     
     # Thêm UPX nếu có
@@ -234,12 +256,7 @@ def build_executable(version, config_files):
 
     # Thêm các hidden imports cần thiết
     hidden_imports = [
-        # NumPy - BẮT BUỘC (pandas phụ thuộc vào numpy)
-        'numpy',
-        'numpy.core',
-        'numpy.core._multiarray_umath',
-        
-        # Pandas và các phụ thuộc
+        # Pandas và các phụ thuộc (numpy sẽ được xử lý bởi hook)
         'pandas._libs.tslibs.base',
         'pandas._libs.tslibs.np_datetime',
         'pandas._libs.tslibs.timedeltas',
