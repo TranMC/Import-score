@@ -1718,7 +1718,7 @@ def ensure_required_columns(df):
 def create_ui():
     global status_label, entry_student_name, tree
     global entry_correct_count, entry_exam_code
-    global entry_max_questions
+    global entry_max_questions, score_per_q_label
     global score_info_label, entry_direct_score, stats_label
     global highest_score_label, lowest_score_label  # Thêm biến cho điểm cao/thấp    
     
@@ -1839,9 +1839,9 @@ def create_ui():
     main_container = ttk.Frame(root, style='TFrame')
     main_container.pack(fill="both", expand=True, padx=8, pady=8)
     
-    # Configure grid weights - 70% trái, 30% phải
-    main_container.grid_columnconfigure(0, weight=7, minsize=700)
-    main_container.grid_columnconfigure(1, weight=3, minsize=300)
+    # Configure grid weights - 70% trái, 30% phải với minsize đảm bảo không bị khuất
+    main_container.grid_columnconfigure(0, weight=7, minsize=800)
+    main_container.grid_columnconfigure(1, weight=3, minsize=360)
     main_container.grid_rowconfigure(0, weight=1)
     
     # ========== CỘT TRÁI - DANH SÁCH HỌC SINH ==========
@@ -1894,13 +1894,51 @@ def create_ui():
     list_frame.grid_columnconfigure(0, weight=1)
     list_frame.grid_rowconfigure(0, weight=1)
     
-    # ========== CỘT PHẢI - CONTROLS ==========
+    # ========== CỘT PHẢI - CONTROLS với Scrollable Canvas ==========
     right_column = ttk.Frame(main_container, style='TFrame')
     right_column.grid(row=0, column=1, sticky='nsew')
     
+    # Tạo Canvas với scrollbar cho cột phải
+    right_canvas = tk.Canvas(right_column, bg=config['ui']['theme']['background'], 
+                            highlightthickness=0, width=360)
+    right_scrollbar = ttk.Scrollbar(right_column, orient="vertical", command=right_canvas.yview)
+    scrollable_right_frame = ttk.Frame(right_canvas, style='TFrame')
+    
+    scrollable_right_frame.bind(
+        "<Configure>",
+        lambda e: right_canvas.configure(scrollregion=right_canvas.bbox("all"))
+    )
+    
+    canvas_window = right_canvas.create_window((0, 0), window=scrollable_right_frame, anchor="nw", width=360)
+    right_canvas.configure(yscrollcommand=right_scrollbar.set)
+    
+    # Update canvas window width khi canvas resize
+    def on_canvas_resize(event):
+        right_canvas.itemconfig(canvas_window, width=event.width)
+    right_canvas.bind("<Configure>", on_canvas_resize)
+    
+    right_canvas.pack(side="left", fill="both", expand=True)
+    right_scrollbar.pack(side="right", fill="y")
+    
+    # Bind mousewheel cho scroll mượt - CHỈ KHI CHUỘT Ở TRONG VÙNG PHẢI
+    def on_mousewheel(event):
+        right_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    
+    def bind_mousewheel(event):
+        right_canvas.bind_all("<MouseWheel>", on_mousewheel)
+    
+    def unbind_mousewheel(event):
+        right_canvas.unbind_all("<MouseWheel>")
+    
+    # Chỉ scroll khi chuột vào vùng cột phải
+    right_canvas.bind("<Enter>", bind_mousewheel)
+    right_canvas.bind("<Leave>", unbind_mousewheel)
+    scrollable_right_frame.bind("<Enter>", bind_mousewheel)
+    scrollable_right_frame.bind("<Leave>", unbind_mousewheel)
+    
     # Thống kê
-    stats_card = ttk.LabelFrame(right_column, text="📊 Thống Kê", padding=6)
-    stats_card.pack(fill="x", pady=(0, 6))
+    stats_card = ttk.LabelFrame(scrollable_right_frame, text="📊 Thống Kê", padding=6)
+    stats_card.pack(fill="x", pady=(0, 6), padx=4)
     
     stats_label = ttk.Label(stats_card, text="0/0 có điểm", 
                           font=(config['ui']['font_family'], 10, 'bold'))
@@ -1917,8 +1955,8 @@ def create_ui():
     lowest_score_label.pack(pady=2)
     
     # File Management
-    file_card = ttk.LabelFrame(right_column, text="📁 File", padding=6)
-    file_card.pack(fill="x", pady=(0, 6))
+    file_card = ttk.LabelFrame(scrollable_right_frame, text="📁 File", padding=6)
+    file_card.pack(fill="x", pady=(0, 6), padx=4)
     
     file_btn_frame = ttk.Frame(file_card)
     file_btn_frame.pack(fill="x")
@@ -1933,8 +1971,8 @@ def create_ui():
               command=generate_report, style='Accent.TButton', width=12).pack(fill="x", pady=2)
     
     # Nhập điểm
-    score_card = ttk.LabelFrame(right_column, text="✏️ Nhập Điểm", padding=6)
-    score_card.pack(fill="x")
+    score_card = ttk.LabelFrame(scrollable_right_frame, text="✏️ Nhập Điểm", padding=6)
+    score_card.pack(fill="x", padx=4)
     
     ttk.Label(score_card, text="🔢 Mã Đề:", 
              font=(config['ui']['font_family'], 9)).pack()
