@@ -4,8 +4,8 @@
         "exam_code": "Mã đề",
         "score": "Điểm"
     },
-    "max_questions": 40,
-    "score_per_question": 0.25,
+    "max_questions": 111,
+    "score_per_question": 0.09,
     "exam_codes": [
         "701",
         "702",
@@ -76,10 +76,10 @@
         "animation": true,
         "dark_mode": true,
         "responsive": {
-            "initial_width": 1400,
-            "initial_height": 800,
-            "min_width": 1280,
-            "min_height": 720
+            "initial_width": 1920,
+            "initial_height": 1080,
+            "min_width": 1480,
+            "min_height": 920
         }
     },
     "auto_backup": true,

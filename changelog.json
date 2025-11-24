@@ -1,4 +1,10 @@
 {   
+    "3.0-release": [
+        "Sửa lỗi giao diện sơ bộ và điều chỉnh một số layout trên màn hình chính",
+        "Cải thiện trải nghiệm người dùng: thông báo toast rõ ràng hơn và ổn định",
+        "Thêm tính năng đánh màu theo thang điểm (hỗ trợ tùy chỉnh ngưỡng)",
+        "Tối ưu hiệu năng khi tải danh sách và xử lý file lớn"
+    ],
     "2.9.5-alpha": [
         "Phiên bản thử nghiệm nội bộ, không có thay đổi gì đáng kể"
     ],

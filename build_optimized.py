@@ -150,6 +150,11 @@ def prepare_build_environment():
     version_json_file = os.path.join(current_dir, "version.json")
     changelog_json_file = os.path.join(current_dir, "changelog.json")
     
+    # QUAN TRỌNG: File app_config.json được bundle vào .exe sẽ làm MẪU
+    # Khi app chạy lần đầu, nó sẽ copy config này vào AppData
+    # Các lần sau, app sẽ đọc/ghi từ AppData (không ảnh hưởng file .exe)
+    log("File app_config.json hiện tại sẽ được dùng làm mẫu cho app khi build", "INFO")
+    
     # Kiểm tra xem các file cần thiết có tồn tại không
     missing_files = []
     for file_path, file_name in [

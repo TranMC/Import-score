@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import pandas as pd
 from pandas import CategoricalDtype
 import os
+import sys
 import json
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -33,9 +34,14 @@ class ToolTip:
         self.widget.bind("<Leave>", self.hide_tooltip)
         
     def show_tooltip(self, event=None):
-        x, y, _, _ = self.widget.bbox("insert")
-        x += self.widget.winfo_rootx() + 25
-        y += self.widget.winfo_rooty() + 25
+        # Lấy vị trí của widget
+        x = self.widget.winfo_rootx() + 25
+        y = self.widget.winfo_rooty() + 25
+        
+        # Đóng tooltip cũ nếu có
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
         
         # Tạo cửa sổ toplevel
         self.tooltip = tk.Toplevel(self.widget)
@@ -52,15 +58,321 @@ class ToolTip:
             self.tooltip.destroy()
             self.tooltip = None
 
+# Undo/Redo Manager
+class UndoManager:
+    """Quản lý undo/redo cho các thao tác chỉnh sửa dữ liệu"""
+    def __init__(self, max_history=50):
+        self.undo_stack = []  # Stack lưu các state trước đó
+        self.redo_stack = []  # Stack lưu các state đã undo
+        self.max_history = max_history
+    
+    def push_state(self, state, action_name):
+        """Lưu state hiện tại vào undo stack
+        
+        Args:
+            state: DataFrame copy hoặc dict chứa thông tin state
+            action_name: Tên hành động (VD: "Nhập điểm cho Nguyễn Văn A")
+        """
+        if state is not None:
+            self.undo_stack.append({
+                'state': state.copy() if hasattr(state, 'copy') else state,
+                'action': action_name,
+                'timestamp': datetime.now()
+            })
+            # Giới hạn kích thước stack
+            if len(self.undo_stack) > self.max_history:
+                self.undo_stack.pop(0)
+            # Clear redo stack khi có thay đổi mới
+            self.redo_stack.clear()
+    
+    def undo(self):
+        """Hoàn tác thao tác cuối cùng
+        
+        Returns:
+            tuple: (state, action_name) hoặc (None, None) nếu không thể undo
+        """
+        if self.can_undo():
+            current = self.undo_stack.pop()
+            self.redo_stack.append(current)
+            return current['state'], current['action']
+        return None, None
+    
+    def redo(self):
+        """Làm lại thao tác đã hoàn tác
+        
+        Returns:
+            tuple: (state, action_name) hoặc (None, None) nếu không thể redo
+        """
+        if self.can_redo():
+            current = self.redo_stack.pop()
+            self.undo_stack.append(current)
+            return current['state'], current['action']
+        return None, None
+    
+    def can_undo(self):
+        """Kiểm tra có thể undo không"""
+        return len(self.undo_stack) > 0
+    
+    def can_redo(self):
+        """Kiểm tra có thể redo không"""
+        return len(self.redo_stack) > 0
+    
+    def clear(self):
+        """Xóa toàn bộ history"""
+        self.undo_stack.clear()
+        self.redo_stack.clear()
+    
+    def get_undo_info(self):
+        """Lấy thông tin về thao tác có thể undo"""
+        if self.can_undo():
+            return self.undo_stack[-1]['action']
+        return None
+    
+    def get_redo_info(self):
+        """Lấy thông tin về thao tác có thể redo"""
+        if self.can_redo():
+            return self.redo_stack[-1]['action']
+        return None
+
+# Toast Notification System
+class ToastNotification:
+    """Hệ thống thông báo toast hiện đại"""
+    active_toasts = []
+    
+    @staticmethod
+    def show(message, toast_type="info", duration=3000):
+        """
+        Hiển thị toast notification
+        
+        Args:
+            message (str): Nội dung thông báo
+            toast_type (str): Loại thông báo: 'success', 'error', 'warning', 'info'
+            duration (int): Thời gian hiển thị (ms), 0 = không tự động đóng
+        """
+        # Tạo cửa sổ toast
+        toast = tk.Toplevel(root)
+        toast.wm_overrideredirect(True)
+        toast.attributes('-topmost', True)
+        
+        # Màu sắc theo loại
+        colors = {
+            'success': {'bg': '#10B981', 'fg': 'white', 'icon': '✓'},
+            'error': {'bg': '#EF4444', 'fg': 'white', 'icon': '✕'},
+            'warning': {'bg': '#F59E0B', 'fg': 'white', 'icon': '⚠'},
+            'info': {'bg': '#3B82F6', 'fg': 'white', 'icon': 'ℹ'}
+        }
+        
+        style_config = colors.get(toast_type, colors['info'])
+        
+        # Frame chính với padding
+        main_frame = tk.Frame(toast, bg=style_config['bg'], padx=20, pady=12)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Icon + Message
+        content_frame = tk.Frame(main_frame, bg=style_config['bg'])
+        content_frame.pack(fill='both', expand=True)
+        
+        tk.Label(content_frame, 
+                text=style_config['icon'], 
+                font=('Segoe UI', 16),
+                bg=style_config['bg'],
+                fg=style_config['fg']).pack(side='left', padx=(0, 10))
+        
+        tk.Label(content_frame, 
+                text=message,
+                font=('Segoe UI', 10, 'bold'),
+                bg=style_config['bg'],
+                fg=style_config['fg'],
+                wraplength=300,
+                justify='left').pack(side='left', fill='both', expand=True)
+        
+        # Tính toán vị trí (góc phải dưới màn hình)
+        toast.update_idletasks()
+        toast_width = toast.winfo_width()
+        toast_height = toast.winfo_height()
+        
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        
+        # Cleanup các toast đã bị destroyed
+        ToastNotification.active_toasts = [t for t in ToastNotification.active_toasts if t.winfo_exists()]
+        
+        # Stack toasts từ dưới lên
+        y_offset = 0
+        for t in ToastNotification.active_toasts:
+            try:
+                if t.winfo_exists():
+                    y_offset += t.winfo_height() + 10
+            except:
+                pass
+        
+        x = screen_width - toast_width - 20
+        y = screen_height - toast_height - 60 - y_offset
+        
+        toast.geometry(f"+{x}+{y}")
+        
+        # Thêm vào danh sách active
+        ToastNotification.active_toasts.append(toast)
+        
+        # Animation fade in
+        toast.attributes('-alpha', 0.0)
+        for i in range(1, 11):
+            toast.attributes('-alpha', i / 10)
+            toast.update()
+            root.after(20)
+        
+        def close_toast():
+            # Xóa khỏi danh sách trước
+            if toast in ToastNotification.active_toasts:
+                ToastNotification.active_toasts.remove(toast)
+            
+            # Animation fade out
+            try:
+                for i in range(10, 0, -1):
+                    if toast.winfo_exists():
+                        toast.attributes('-alpha', i / 10)
+                        toast.update()
+                        root.after(20)
+                    else:
+                        break
+            except:
+                pass
+            
+            # Destroy toast
+            try:
+                if toast.winfo_exists():
+                    toast.destroy()
+            except:
+                pass
+        
+        # Tự động đóng sau duration nếu > 0
+        if duration > 0:
+            toast.after(duration, close_toast)
+        
+        # Click để đóng sớm
+        toast.bind('<Button-1>', lambda e: close_toast())
+        
+        return toast
+
+def get_config_path():
+    """Lấy đường dẫn đến file config trong thư mục AppData của Windows"""
+    # Lấy thư mục AppData/Local
+    appdata_local = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'StudentScoreImport')
+    
+    # Tạo thư mục nếu chưa tồn tại
+    if not os.path.exists(appdata_local):
+        try:
+            os.makedirs(appdata_local)
+        except Exception as e:
+            print(f"Không thể tạo thư mục config: {str(e)}")
+            # Fallback về thư mục hiện tại nếu không tạo được AppData
+            return os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+    
+    return os.path.join(appdata_local, 'app_config.json')
+
+def load_bundled_config():
+    """Tải config mẫu từ file được bundle với ứng dụng"""
+    try:
+        # Khi chạy từ PyInstaller, file được bundle nằm trong sys._MEIPASS
+        if getattr(sys, 'frozen', False):
+            bundle_dir = sys._MEIPASS
+        else:
+            bundle_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        bundled_config_path = os.path.join(bundle_dir, 'app_config.json')
+        
+        if os.path.exists(bundled_config_path):
+            with open(bundled_config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Không thể đọc config mẫu: {str(e)}")
+    
+    return None
+
 # Cấu hình cơ bản - tải từ file thay vì hardcode
 def load_config():
     """Tải cấu hình từ file JSON"""
     try:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+        config_path = get_config_path()
+        print(f"Đường dẫn config: {config_path}")  # Debug
+        
         with open(config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
+    except FileNotFoundError:
+        print("File config chưa tồn tại, tạo config mặc định")
+        
+        # Thử tải config mẫu từ bundle trước
+        bundled_config = load_bundled_config()
+        if bundled_config:
+            print("Sử dụng config mẫu từ bundle")
+            default_config = bundled_config
+        else:
+            print("Sử dụng config mặc định hardcoded")
+            # Trả về cấu hình mặc định và lưu luôn
+            default_config = {
+                'columns': {
+                    'name': 'Tên Học Sinh',
+                    'exam_code': 'Mã Đề',
+                    'score': 'Điểm'
+                },
+                'max_questions': 40,
+                'score_per_question': 0.25,
+                'exam_codes': ['701', '702', '703', '704'],
+                'shortcuts': {
+                    'search': '<Control-f>',
+                    'direct_score': '<Control-g>',
+                    'undo': '<Control-z>'
+                },
+                'security': {
+                    'encrypt_backups': False,
+                    'encrypt_sensitive_data': False,
+                    'password_protect_app': False,
+                    'auto_lock_timeout_minutes': 0
+                },
+                'ui': {
+                    'font_family': 'Segoe UI',
+                    'font_size': {
+                        'normal': 11,
+                        'heading': 12,
+                        'button': 11
+                    },
+                    'padding': {
+                        'frame': 10,
+                        'widget': 5
+                    },
+                    'min_width': {
+                        'button': 120,
+                        'entry': 150,
+                        'combobox': 100
+                    },
+                    'theme': themes.LIGHT_THEME,
+                    'rounded_corners': 4,
+                    'dark_mode': False,
+                    'responsive': {
+                        'initial_width': 1400,
+                        'initial_height': 800,
+                        'min_width': 1280,
+                        'min_height': 720
+                    }
+                }
+            }
+        
+        # Lưu config mặc định ngay lập tức
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(default_config, f, ensure_ascii=False, indent=4)
+            print(f"Đã tạo file config mới tại: {config_path}")
+        except Exception as e:
+            print(f"Không thể lưu config mặc định: {str(e)}")
+        
+        return default_config
     except Exception as e:
         print(f"Lỗi khi đọc cấu hình: {str(e)}")
+        # Thử tải config mẫu từ bundle
+        bundled_config = load_bundled_config()
+        if bundled_config:
+            return bundled_config
+        
         # Trả về cấu hình mặc định
         return {
             'columns': {
@@ -102,10 +414,10 @@ def load_config():
                 'rounded_corners': 4,
                 'dark_mode': False,
                 'responsive': {
-                    'initial_width': 900,
-                    'initial_height': 650,
-                    'min_width': 800,
-                    'min_height': 600
+                    'initial_width': 1400,
+                    'initial_height': 800,
+                    'min_width': 1280,
+                    'min_height': 720
                 }
             }
         }
@@ -113,13 +425,15 @@ def load_config():
 config = load_config()
 
 def save_config():
-    """Lưu cấu hình ra file JSON"""
+    """Lưu cấu hình ra file JSON trong AppData"""
     try:
-        config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app_config.json")
+        config_path = get_config_path()
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=4)
+        print(f"Đã lưu config tại: {config_path}")  # Debug
     except Exception as e:
         print(f"Lỗi khi lưu cấu hình: {str(e)}")
+        messagebox.showwarning("Cảnh báo", f"Không thể lưu cấu hình: {str(e)}")
 
 def encrypt_data(data, password):
     """
@@ -185,6 +499,7 @@ root.title("Quản lí điểm học sinh")
 df = None
 file_path = None
 undo_stack = []
+undo_manager = UndoManager(max_history=50)  # Quản lý undo/redo
 search_timer_id = None  # Thêm biến để theo dõi timer
 search_index = None    # Thêm biến để lưu search index
 last_activity_time = None  # Thêm biến để theo dõi thời gian hoạt động cuối cùng
@@ -463,9 +778,133 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
     except Exception as e:
         status_label.config(text=f"Lỗi khi đọc file: {str(e)}", 
 )
-        messagebox.showerror("Lỗi", f"Không thể đọc file Excel: {str(e)}")
+        ToastNotification.show(
+            f"❌ Không thể đọc file Excel\n"
+            f"📄 Lỗi: {str(e)}\n"
+            f"💡 Kiểm tra:\n"
+            f"  • File có đúng định dạng .xlsx?\n"
+            f"  • File có đang mở ở ứng dụng khác?\n"
+            f"  • File có bị hỏng không?", 
+            "error")
         print(f"Chi tiết lỗi: {traceback.format_exc()}")
         return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+
+def add_to_recent_files(filepath):
+    """Thêm file vào danh sách recent files"""
+    if 'recent_files' not in config:
+        config['recent_files'] = []
+    
+    # Xóa file cũ nếu đã tồn tại trong danh sách
+    if filepath in config['recent_files']:
+        config['recent_files'].remove(filepath)
+    
+    # Thêm vào đầu danh sách
+    config['recent_files'].insert(0, filepath)
+    
+    # Giới hạn 5 file gần nhất
+    config['recent_files'] = config['recent_files'][:5]
+    
+    # Lưu config
+    save_config()
+    
+    # Cập nhật menu
+    update_recent_files_menu()
+
+def open_recent_file(filepath):
+    """Mở file từ danh sách recent files"""
+    global df, file_path
+    
+    # Kiểm tra file có tồn tại không
+    if not os.path.exists(filepath):
+        ToastNotification.show(f"File không tồn tại: {os.path.basename(filepath)}", "error")
+        # Xóa khỏi danh sách recent
+        if filepath in config.get('recent_files', []):
+            config['recent_files'].remove(filepath)
+            save_config()
+            update_recent_files_menu()
+        return
+    
+    file_path = filepath
+    status_label.config(text=f"Đang đọc file: {os.path.basename(file_path)}...")
+    root.update()
+    
+    try:
+        df = read_excel_file(file_path)
+        
+        if df is not None and not df.empty:
+            total_students = len(df)
+            status_label.config(text=f"Đã đọc xong: {os.path.basename(file_path)} ({total_students} học sinh)")
+            
+            df = ensure_required_columns(df)
+            refresh_ui()
+            
+            # Thêm vào recent files
+            add_to_recent_files(file_path)
+            
+            ToastNotification.show(f"Đã mở file {os.path.basename(file_path)}", "success")
+        else:
+            status_label.config(text="Không có dữ liệu để hiển thị")
+    except Exception as e:
+        error_message = str(e)
+        status_label.config(text=f"Lỗi: {error_message[:50]}")
+        ToastNotification.show(f"Lỗi khi đọc file: {error_message[:100]}", "error")
+        traceback.print_exc()
+
+def update_recent_files_menu():
+    """Cập nhật menu Recent Files"""
+    # Tìm menu File hoặc tạo mới
+    try:
+        # Xóa menu cũ nếu tồn tại
+        menubar = root.nametowidget(root.cget('menu'))
+        
+        # Tìm hoặc tạo menu File
+        file_menu = None
+        for i in range(menubar.index('end') + 1 if menubar.index('end') is not None else 0):
+            try:
+                label = menubar.entrycget(i, 'label')
+                if 'File' in label or 'Tệp' in label:
+                    file_menu = menubar.nametowidget(menubar.entrycget(i, 'menu'))
+                    break
+            except:
+                pass
+        
+        # Nếu chưa có, tạo menu File mới
+        if file_menu is None:
+            file_menu = tk.Menu(menubar, tearoff=0,
+                              background=config['ui']['theme']['card'],
+                              foreground=config['ui']['theme']['text'],
+                              activebackground=config['ui']['theme']['primary'],
+                              activeforeground='white')
+            menubar.insert_cascade(0, label="📁 File", menu=file_menu)
+        
+        # Xóa các mục recent files cũ
+        try:
+            last_index = file_menu.index('end')
+            if last_index is not None:
+                for i in range(last_index, -1, -1):
+                    try:
+                        label = file_menu.entrycget(i, 'label')
+                        if 'Recent' in label or any(ext in label for ext in ['.xlsx', '.xls']):
+                            file_menu.delete(i)
+                    except:
+                        pass
+        except:
+            pass
+        
+        # Thêm separator và recent files mới
+        if config.get('recent_files'):
+            file_menu.add_separator()
+            file_menu.add_command(label="📌 File Gần Đây", state='disabled')
+            
+            for i, filepath in enumerate(config['recent_files'][:5]):
+                if os.path.exists(filepath):
+                    filename = os.path.basename(filepath)
+                    file_menu.add_command(
+                        label=f"  {i+1}. {filename}",
+                        command=lambda fp=filepath: open_recent_file(fp)
+                    )
+    except Exception as e:
+        print(f"Lỗi khi cập nhật recent files menu: {str(e)}")
 
 def select_file():
     global df, file_path
@@ -493,8 +932,17 @@ def select_file():
                 # Đảm bảo các cột cần thiết tồn tại
                 df = ensure_required_columns(df)
                 
+                # Thêm vào recent files
+                add_to_recent_files(file_path)
+                
                 # Cập nhật giao diện
                 refresh_ui()
+                
+                # Tự động làm mới dữ liệu sau khi mở file
+                update_stats()
+                update_score_extremes()
+                
+                ToastNotification.show(f"Đã mở file {os.path.basename(file_path)}", "success")
             else:
                 status_label.config(
                     text="Không có dữ liệu để hiển thị, vui lòng tải file Excel có dữ liệu",
@@ -507,7 +955,7 @@ def select_file():
                 text=f"Lỗi: {error_message[:50] + '...' if len(error_message) > 50 else error_message}",
 
             )
-            messagebox.showerror("Lỗi", f"Không thể đọc file Excel:\n{error_message}")
+            ToastNotification.show(f"Lỗi: {error_message[:100]}", "error")
             traceback.print_exc()  # In chi tiết lỗi ra console để debug
 
 def read_excel_normally(file_path):
@@ -608,7 +1056,7 @@ def search_student(event=None):
         tree.delete(item)
         
     if df is None or df.empty:
-        messagebox.showinfo("Thông báo", "Chưa có dữ liệu học sinh")
+        ToastNotification.show("ℹ️ Chưa có dữ liệu học sinh", "info")
         update_stats()
         return
 
@@ -621,7 +1069,11 @@ def search_student(event=None):
                 column_mapping[key] = matched_col
 
     if not column_mapping.get('name'):
-        messagebox.showerror("Lỗi", "Không tìm thấy cột tên học sinh trong file Excel")
+        ToastNotification.show(
+            "❌ Không tìm thấy cột tên học sinh\n"
+            f"💡 Kiểm tra file Excel có cột '{config['columns']['name']}'\n"
+            "   hoặc vào File > Cài đặt để cấu hình tên cột", 
+            "error")
         return
 
     ten_hoc_sinh = entry_student_name.get().strip().lower()  # Chuyển về chữ thường để tìm kiếm không phân biệt hoa thường
@@ -643,6 +1095,23 @@ def search_student(event=None):
                     values.append(str(value) if pd.notna(value) else '')
         return values
 
+    # Hàm áp dụng màu theo điểm
+    def apply_color_by_score(item_id, score_value):
+        """Tô màu dòng theo điểm số"""
+        try:
+            if pd.notna(score_value):
+                score = float(score_value)
+                if score < 5:
+                    tree.item(item_id, tags=('low_score',))
+                elif score < 7:
+                    tree.item(item_id, tags=('medium_score',))
+                else:
+                    tree.item(item_id, tags=('high_score',))
+            else:
+                tree.item(item_id, tags=('no_score',))
+        except:
+            tree.item(item_id, tags=('no_score',))
+    
     # Display results with improved performance
     if not ten_hoc_sinh:
         # Nếu số lượng học sinh lớn, giới hạn hiển thị ban đầu
@@ -650,7 +1119,10 @@ def search_student(event=None):
         for _, row in df.head(display_limit).iterrows():
             values = get_display_values(row)
             if values:
-                tree.insert('', 'end', values=values)
+                item_id = tree.insert('', 'end', values=values)
+                # Áp dụng màu theo điểm
+                if 'score' in column_mapping:
+                    apply_color_by_score(item_id, row[column_mapping['score']])
         
         # Thông báo nếu chỉ hiển thị một phần
         if len(df) > display_limit:
@@ -670,7 +1142,10 @@ def search_student(event=None):
             for _, row in result.head(result_limit).iterrows():
                 values = get_display_values(row)
                 if values:
-                    tree.insert('', 'end', values=values)
+                    item_id = tree.insert('', 'end', values=values)
+                    # Áp dụng màu theo điểm
+                    if 'score' in column_mapping:
+                        apply_color_by_score(item_id, row[column_mapping['score']])
             
             # Thông báo nếu có quá nhiều kết quả
             if len(result) > result_limit:
@@ -691,18 +1166,21 @@ def search_student(event=None):
 
 def add_student():
     """Thêm học sinh mới"""
-    global df
+    global df, undo_manager
     if df is None:
-        messagebox.showerror("Lỗi", "Chưa chọn file Excel.")
+        ToastNotification.show("❌ Chưa chọn file Excel\n💡 Vui lòng chọn File > Mở để chọn file dữ liệu", "error")
         return
 
     ten_hoc_sinh = entry_student_name.get().strip()
     if not ten_hoc_sinh:
-        messagebox.showinfo("Thông báo", "Vui lòng nhập tên học sinh để thêm.")
+        ToastNotification.show("ℹ️ Vui lòng nhập tên học sinh để thêm", "info")
         return
+    
+    # Lưu state trước khi thêm
+    undo_manager.push_state(df, f"Thêm học sinh '{ten_hoc_sinh}'")
 
     if ten_hoc_sinh in df[config['columns']['name']].values:
-        messagebox.showinfo("Thông báo", "Học sinh đã tồn tại trong danh sách.")
+        ToastNotification.show("⚠️ Học sinh đã tồn tại trong danh sách", "warning")
     else:
         save_state()
         new_row = pd.DataFrame({config['columns']['name']: [ten_hoc_sinh], 'Điểm': [None]})
@@ -713,20 +1191,25 @@ def add_student():
         # Cập nhật thống kê
         update_stats()
         update_score_extremes()
+        update_undo_redo_buttons()  # Cập nhật trạng thái undo/redo
 
 def calculate_score(event=None):
     """Tính điểm từ số câu đúng"""
-    global df
+    global df, undo_manager
     if df is None:
-        messagebox.showerror("Lỗi", "Chưa chọn file Excel.")
+        ToastNotification.show("Đề xuất tải file Excel trước khi nhập điểm", "error")
         return
  
     selected_item = tree.selection()
     if not selected_item:
-        messagebox.showerror("Lỗi", "Vui lòng chọn học sinh.")
+        ToastNotification.show("Vui lòng chọn học sinh để nhập điểm", "warning")
         return
 
     selected = tree.item(selected_item[0])['values'][0]
+    
+    # Lưu state trước khi thay đổi
+    undo_manager.push_state(df, f"Tính điểm cho '{selected}'")
+    
     try:
         so_cau_dung = int(entry_correct_count.get())
         ma_de = entry_exam_code.get().strip()
@@ -738,21 +1221,20 @@ def calculate_score(event=None):
             try:
                 ma_de = int(ma_de)
             except ValueError:
-                messagebox.showerror("Lỗi", "Mã đề phải là số")
+                ToastNotification.show("Mã đề phải là số", "error")
                 return
         # Nếu để trống thì giữ nguyên mã đề cũ
         else:
             ma_de = df.loc[df[config['columns']['name']] == selected, 'Mã đề'].iloc[0]
             
         if not (0 <= so_cau_dung <= config['max_questions']):
-            messagebox.showerror("Lỗi", 
-                               f"Số câu đúng phải từ 0 đến {config['max_questions']}.")
+            ToastNotification.show(f"Số câu đúng phải từ 0 đến {config['max_questions']}", "error")
             return
 
         diem = round(so_cau_dung * config['score_per_question'], 2)
         
         if diem > 10:
-            messagebox.showerror("Lỗi", "Điểm tính được vượt quá 10.")
+            ToastNotification.show("Điểm tính được vượt quá 10", "error")
             return
             
         save_state()
@@ -769,16 +1251,34 @@ def calculate_score(event=None):
         df = df_proper
         
         save_excel()
+        
+        # Lưu index của học sinh hiện tại
+        current_index = tree.index(selected_item[0])
+        
         search_student()
         
         # Cập nhật thống kê
         update_stats()
         update_score_extremes()
+        update_undo_redo_buttons()  # Cập nhật trạng thái undo/redo
         
-        # Chỉ xóa nội dung ô số câu đúng
+        # Hiển thị toast thành công
+        ToastNotification.show(f"Đã lưu điểm {diem} cho {selected}", "success")
+        
+        # Xóa nội dung ô số câu đúng
         entry_correct_count.delete(0, tk.END)
+        
+        # Tự động chọn học sinh tiếp theo
+        children = tree.get_children()
+        if children and current_index + 1 < len(children):
+            next_item = children[current_index + 1]
+            tree.selection_set(next_item)
+            tree.focus(next_item)
+            tree.see(next_item)
+            # Focus vào ô nhập số câu đúng để tiếp tục nhập
+            entry_correct_count.focus_set()
     except ValueError:
-        messagebox.showerror("Lỗi", "Vui lòng nhập số câu đúng hợp lệ.")
+        ToastNotification.show("Vui lòng nhập số câu đúng hợp lệ", "error")
 
 def update_config(event=None):
     """Cập nhật cấu hình tính điểm"""
@@ -787,7 +1287,7 @@ def update_config(event=None):
         max_q = int(entry_max_questions.get())
         
         if max_q <= 0:
-            messagebox.showerror("Lỗi", "Số câu hỏi phải lớn hơn 0")
+            ToastNotification.show("❌ Số câu hỏi không hợp lệ\n💡 Vui lòng nhập số nguyên dương (> 0)", "error")
             return
             
         # Tự động tính điểm mỗi câu bằng cách chia 10 cho số câu hỏi
@@ -801,29 +1301,81 @@ def update_config(event=None):
         # Cập nhật label thông tin ở header
         score_per_q_label.config(text=f"({score_per_q}đ/câu)")
         
-        messagebox.showinfo("Thành công", f"Đã cập nhật: {max_q} câu, mỗi câu {score_per_q} điểm")
+        ToastNotification.show(f"✅ Đã cập nhật: {max_q} câu, mỗi câu {score_per_q} điểm", "success")
         
     except ValueError:
-        messagebox.showerror("Lỗi", "Vui lòng nhập số hợp lệ")
+        ToastNotification.show("❌ Giá trị không hợp lệ\n💡 Vui lòng nhập số nguyên (VD: 20, 30, 40)", "error")
 
 def focus_student_search(event=None):
     """Di chuyển con trỏ đến ô tìm kiếm học sinh"""
     entry_student_name.focus_set()
     entry_student_name.select_range(0, tk.END)
 
+def perform_undo():
+    """Thực hiện hoàn tác thao tác cuối"""
+    global df, undo_manager
+    
+    if not undo_manager.can_undo():
+        ToastNotification.show("ℹ️ Không có thao tác nào để hoàn tác", "info")
+        return
+    
+    previous_state, action_name = undo_manager.undo()
+    if previous_state is not None:
+        df = previous_state.copy()
+        refresh_ui()
+        save_excel()
+        ToastNotification.show(f"⏪ Đã hoàn tác: {action_name}", "success")
+        update_undo_redo_buttons()
+
+def perform_redo():
+    """Thực hiện làm lại thao tác đã hoàn tác"""
+    global df, undo_manager
+    
+    if not undo_manager.can_redo():
+        ToastNotification.show("ℹ️ Không có thao tác nào để làm lại", "info")
+        return
+    
+    next_state, action_name = undo_manager.redo()
+    if next_state is not None:
+        df = next_state.copy()
+        refresh_ui()
+        save_excel()
+        ToastNotification.show(f"⏩ Đã làm lại: {action_name}", "success")
+        update_undo_redo_buttons()
+
+def update_undo_redo_buttons():
+    """Cập nhật trạng thái enabled/disabled của nút undo/redo"""
+    global undo_manager
+    try:
+        if undo_manager.can_undo():
+            undo_button.config(state='normal')
+        else:
+            undo_button.config(state='disabled')
+        
+        if undo_manager.can_redo():
+            redo_button.config(state='normal')
+        else:
+            redo_button.config(state='disabled')
+    except:
+        pass  # Buttons chưa được tạo
+
 def calculate_score_direct(event=None):
     """Tính điểm trực tiếp từ điểm số nhập vào"""
-    global df, entry_direct_score  # Thêm entry_direct_score vào global
+    global df, entry_direct_score, undo_manager  # Thêm entry_direct_score vào global
     if df is None:
-        messagebox.showerror("Lỗi", "Chưa chọn file Excel.")
+        ToastNotification.show("Đề xuất tải file Excel trước khi nhập điểm", "error")
         return
 
     selected_item = tree.selection()
     if not selected_item:
-        messagebox.showerror("Lỗi", "Vui lòng chọn học sinh.")
+        ToastNotification.show("Vui lòng chọn học sinh để nhập điểm", "warning")
         return
 
     selected = tree.item(selected_item[0])['values'][0]
+    
+    # Lưu state trước khi thay đổi
+    undo_manager.push_state(df, f"Nhập điểm trực tiếp cho '{selected}'")
+    
     try:
         diem = float(entry_direct_score.get())
         ma_de = entry_exam_code.get().strip()
@@ -835,14 +1387,14 @@ def calculate_score_direct(event=None):
             try:
                 ma_de = int(ma_de)
             except ValueError:
-                messagebox.showerror("Lỗi", "Mã đề phải là số")
+                ToastNotification.show("Mã đề phải là số", "error")
                 return
         # Nếu để trống thì giữ nguyên mã đề cũ
         else:
             ma_de = df.loc[df[config['columns']['name']] == selected, 'Mã đề'].iloc[0]
             
         if not (0 <= diem <= 10):
-            messagebox.showerror("Lỗi", "Điểm phải từ 0 đến 10.")
+            ToastNotification.show("Điểm phải từ 0 đến 10", "error")
             return
             
         save_state()
@@ -859,16 +1411,34 @@ def calculate_score_direct(event=None):
         df = df_proper
         
         save_excel()
+        
+        # Lưu index của học sinh hiện tại
+        current_index = tree.index(selected_item[0])
+        
         search_student()
         
         # Cập nhật thống kê
         update_stats()
         update_score_extremes()
+        update_undo_redo_buttons()  # Cập nhật trạng thái undo/redo
         
-        # Chỉ xóa nội dung ô nhập điểm
+        # Hiển thị toast thành công
+        ToastNotification.show(f"Đã lưu điểm {diem} cho {selected}", "success")
+        
+        # Xóa nội dung ô nhập điểm
         entry_direct_score.delete(0, tk.END)
+        
+        # Tự động chọn học sinh tiếp theo
+        children = tree.get_children()
+        if children and current_index + 1 < len(children):
+            next_item = children[current_index + 1]
+            tree.selection_set(next_item)
+            tree.focus(next_item)
+            tree.see(next_item)
+            # Focus vào ô nhập điểm trực tiếp để tiếp tục nhập
+            entry_direct_score.focus_set()
     except ValueError:
-        messagebox.showerror("Lỗi", "Vui lòng nhập điểm hợp lệ.")
+        ToastNotification.show("Vui lòng nhập điểm hợp lệ", "error")
 
 def focus_direct_score(event=None):
     """Di chuyển con trỏ đến ô nhập điểm trực tiếp"""
@@ -898,7 +1468,7 @@ def customize_shortcuts():
         
         save_config()  # Lưu vào file
         shortcut_window.destroy()
-        messagebox.showinfo("Thành công", "Đã lưu cấu hình phím tắt")
+        ToastNotification.show("✅ Đã lưu cấu hình phím tắt", "success")
     
     ttk.Label(shortcut_window, text="Tìm kiếm:").pack(pady=5)
     search_entry = ttk.Entry(shortcut_window)
@@ -930,7 +1500,7 @@ def customize_exam_codes():
         entry_exam_code['values'] = codes
         save_config()  # Lưu vào file
         code_window.destroy()
-        messagebox.showinfo("Thành công", "Đã lưu danh sách mã đề")
+        ToastNotification.show("✅ Đã lưu danh sách mã đề", "success")
     
     ttk.Label(code_window, text="Nhập mỗi mã đề trên một dòng:").pack(pady=5)
     code_text = tk.Text(code_window, height=10)
@@ -973,7 +1543,7 @@ def customize_columns():
         
         save_config()  # Save to config file
         column_window.destroy()
-        messagebox.showinfo("Thành công", "Đã lưu tên cột mới")
+        ToastNotification.show("✅ Đã lưu tên cột mới", "success")
         if 'df' in globals() and df is not None and not df.empty:
             search_student()  # Refresh display
 
@@ -1001,6 +1571,11 @@ def customize_security():
     
     # Auto lock timeout (minutes)
     auto_lock_var = tk.IntVar(value=config.get('security', {}).get('auto_lock_timeout_minutes', 30))
+    
+    # Tùy chọn tự động sao lưu
+    auto_backup_var = tk.BooleanVar(value=config.get('auto_backup', False))
+    ttk.Checkbutton(options_frame, text="Tự động sao lưu khi đóng chương trình", 
+                  variable=auto_backup_var).pack(anchor="w", pady=5)
     
     # Tùy chọn mã hóa backup
     ttk.Checkbutton(options_frame, text="Mã hóa file sao lưu tự động", 
@@ -1095,6 +1670,9 @@ def customize_security():
         # Lưu các cài đặt vào config
         if 'security' not in config:
             config['security'] = {}
+        
+        # Lưu cài đặt auto backup
+        config['auto_backup'] = auto_backup_var.get()
             
         config['security']['encrypt_backups'] = encrypt_backups_var.get()
         config['security']['encrypt_sensitive_data'] = encrypt_sensitive_var.get()
@@ -1116,7 +1694,7 @@ def customize_security():
         # Đóng cửa sổ cài đặt
         security_window.destroy()
         
-        messagebox.showinfo("Thành công", "Đã lưu cấu hình bảo mật.")
+        ToastNotification.show("✅ Đã lưu cấu hình bảo mật", "success")
     
     # Nút lưu cài đặt
     ttk.Button(button_frame, text="Lưu cài đặt", 
@@ -1132,7 +1710,7 @@ def backup_data():
     """Sao lưu dữ liệu ra file"""
     global df, file_path
     if df is None or file_path is None:
-        messagebox.showerror("Lỗi", "Chưa có dữ liệu để sao lưu.")
+        ToastNotification.show("❌ Chưa có dữ liệu để sao lưu\n💡 Vui lòng mở file Excel trước khi sao lưu", "error")
         return
     
     try:
@@ -1177,15 +1755,6 @@ def backup_data():
         for idx, info in enumerate(info_labels):
             ttk.Label(info_frame, text=info, wraplength=400, justify="left").pack(anchor="w", pady=3)
         
-        # Tùy chọn backup tự động
-        options_frame = ttk.Frame(confirm_window)
-        options_frame.pack(fill="x", padx=20, pady=5)
-        
-        auto_backup_var = tk.BooleanVar(value=config.get('auto_backup', False))
-        ttk.Checkbutton(options_frame, text="Bật sao lưu tự động", variable=auto_backup_var).pack(side="left")
-        ttk.Label(options_frame, text="(Tự động sao lưu khi đóng chương trình)", 
-                foreground="gray", font=(config['ui']['font_family'], 9)).pack(side="left", padx=5)
-        
         # Tùy chọn bảo mật
         security_frame = ttk.Frame(confirm_window)
         security_frame.pack(fill="x", padx=20, pady=5)
@@ -1229,8 +1798,7 @@ def backup_data():
                     return
                 confirm_window.encrypt_password = password
             
-            # Lưu cấu hình
-            config['auto_backup'] = auto_backup_var.get()
+            # Lưu cấu hình mã hóa
             # Đảm bảo config['security'] đã được khởi tạo
             if 'security' not in config:
                 config['security'] = {}
@@ -1243,7 +1811,7 @@ def backup_data():
                 "backup_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "total_students": int(total_students),
                 "scored_students": int(scored_students),
-                "app_version": config['version'],
+                "app_version": config.get('version', 'unknown'),
                 "encrypted": encrypt_var.get()
             }
             
@@ -1278,17 +1846,27 @@ def backup_data():
                     json.dump(backup_info, f, ensure_ascii=False, indent=2)
                 
                 confirm_window.destroy()
-                messagebox.showinfo("Thành công", f"Đã sao lưu dữ liệu vào:\n{backup_path_display}")
+                ToastNotification.show(f"✅ Đã sao lưu dữ liệu vào:\n{backup_path_display}", "success")
                 
             except Exception as enc_error:
-                messagebox.showerror("Lỗi mã hóa", f"Không thể mã hóa dữ liệu: {str(enc_error)}")
+                ToastNotification.show(
+                    f"❌ Không thể mã hóa dữ liệu\n"
+                    f"📄 Lỗi: {str(enc_error)}\n"
+                    f"💡 Thử lại hoặc sao lưu không mã hóa",
+                    "error")
                 traceback.print_exc()
         
         ttk.Button(btn_frame, text="Sao lưu", command=confirm_backup, width=15).pack(side="left", padx=10)
         ttk.Button(btn_frame, text="Hủy", command=confirm_window.destroy, width=15).pack(side="right", padx=10)
         
     except Exception as e:
-        messagebox.showerror("Lỗi", f"Không thể sao lưu dữ liệu: {str(e)}")
+        ToastNotification.show(
+            f"❌ Không thể sao lưu dữ liệu\n"
+            f"📄 Lỗi: {str(e)}\n"
+            f"💡 Kiểm tra:\n"
+            f"  • Có quyền ghi vào thư mục?\n"
+            f"  • Đủ dung lượng ổ đĩa?",
+            "error")
         traceback.print_exc()
 
 def restore_backup():
@@ -1409,7 +1987,7 @@ def restore_backup():
                     # Giải mã dữ liệu
                     password = password_var.get()
                     if not password:
-                        messagebox.showerror("Lỗi", "Vui lòng nhập mật khẩu để giải mã")
+                        ToastNotification.show("❌ Chưa nhập mật khẩu\n💡 Vui lòng nhập mật khẩu để giải mã backup", "error")
                         return
                     
                     # Tạo khóa
@@ -1430,8 +2008,14 @@ def restore_backup():
                         # Parse dữ liệu JSON thành DataFrame
                         df = pd.read_json(decrypted_data, orient='records')
                     except Exception as decrypt_error:
-                        messagebox.showerror("Lỗi giải mã", 
-                                          f"Không thể giải mã dữ liệu. Mật khẩu có thể không đúng.\n\nLỗi: {str(decrypt_error)}")
+                        ToastNotification.show(
+                            f"❌ Không thể giải mã dữ liệu\n"
+                            f"📄 Lỗi: {str(decrypt_error)}\n"
+                            f"💡 Nguyên nhân có thể:\n"
+                            f"  • Mật khẩu không đúng\n"
+                            f"  • File backup bị hỏng\n"
+                            f"  • File không phải backup mã hóa",
+                            "error")
                         return
                 else:
                     # Đọc file Excel bình thường
@@ -1462,9 +2046,16 @@ def restore_backup():
                 refresh_ui()
                 
                 confirm_window.destroy()
-                messagebox.showinfo("Thành công", "Đã phục hồi dữ liệu từ bản sao lưu.")
+                ToastNotification.show("✅ Đã phục hồi dữ liệu từ bản sao lưu", "success")
             except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể phục hồi dữ liệu: {str(e)}")
+                ToastNotification.show(
+                    f"❌ Không thể phục hồi dữ liệu\n"
+                    f"📄 Lỗi: {str(e)}\n"
+                    f"💡 Kiểm tra:\n"
+                    f"  • File backup có còn tồn tại?\n"
+                    f"  • File có bị hỏng không?\n"
+                    f"  • Định dạng file có đúng?",
+                    "error")
                 traceback.print_exc()
                 confirm_window.destroy()
         
@@ -1472,7 +2063,11 @@ def restore_backup():
         ttk.Button(btn_frame, text="Hủy", command=confirm_window.destroy, width=15).pack(side="right", padx=5)
         
     except Exception as e:
-        messagebox.showerror("Lỗi", f"Không thể đọc file backup: {str(e)}")
+        ToastNotification.show(
+            f"❌ Không thể đọc file backup\n"
+            f"📄 Lỗi: {str(e)}\n"
+            f"💡 Vui lòng chọn file backup hợp lệ (.xlsx hoặc .bak)",
+            "error")
         traceback.print_exc()
 
 def auto_backup_on_exit():
@@ -1503,7 +2098,7 @@ def auto_backup_on_exit():
                 "backup_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "total_students": int(total_students),
                 "scored_students": int(scored_students),
-                "app_version": config['version'],
+                "app_version": config.get('version', 'unknown'),
                 "auto_backup": True,
                 "encrypted": encrypt_backups,
                 "encryption_level": config.get('security', {}).get('backup_encryption_level', 'medium')
@@ -1600,13 +2195,34 @@ def refresh_ui():
         exam_code_col = find_matching_column(df, config['columns']['exam_code']) or 'Mã đề'
         score_col = find_matching_column(df, config['columns']['score']) or 'Điểm'
         
+        # Hàm áp dụng màu theo điểm
+        def apply_color_by_score(item_id, score_value):
+            """Tô màu dòng theo điểm số"""
+            try:
+                if pd.notna(score_value):
+                    score = float(score_value)
+                    if score < 5:
+                        tree.item(item_id, tags=('low_score',))
+                    elif score < 7:
+                        tree.item(item_id, tags=('medium_score',))
+                    else:
+                        tree.item(item_id, tags=('high_score',))
+                else:
+                    tree.item(item_id, tags=('no_score',))
+            except:
+                tree.item(item_id, tags=('no_score',))
+        
         for i, (_, row) in enumerate(df.head(display_limit).iterrows()):
             values = [
                 row[name_col] if name_col in row else "",
                 row[exam_code_col] if exam_code_col in row and pd.notna(row[exam_code_col]) else "",
                 row[score_col] if score_col in row and pd.notna(row[score_col]) else ""
             ]
-            tree.insert('', 'end', values=values)
+            item_id = tree.insert('', 'end', values=values)
+            
+            # Áp dụng màu theo điểm ngay khi hiển thị
+            if score_col in row:
+                apply_color_by_score(item_id, row[score_col])
             
         # Hiển thị thông báo nếu chỉ hiển thị một phần
         if len(df) > display_limit:
@@ -1638,12 +2254,20 @@ def verify_required_columns(dataframe):
     """Kiểm tra xem dataframe có các cột cần thiết không"""
     # Kiểm tra dataframe có tồn tại không
     if dataframe is None:
-        messagebox.showerror("Lỗi", "Dữ liệu trống, vui lòng kiểm tra lại file Excel.")
+        ToastNotification.show(
+            "❌ Dữ liệu trống\n"
+            "💡 Kiểm tra:\n"
+            "  • File Excel có dữ liệu không?\n"
+            "  • Sheet đầu tiên có đúng không?",
+            "error")
         return False
         
     # Kiểm tra dataframe có rỗng không
     if dataframe.empty:
-        messagebox.showerror("Lỗi", "Dữ liệu trống, vui lòng kiểm tra lại file Excel.")
+        ToastNotification.show(
+            "❌ File Excel không có dữ liệu\n"
+            "💡 Vui lòng thêm dữ liệu vào file rồi mở lại",
+            "error")
         return False
 
     # Lấy tên các cột cần thiết từ config
@@ -1659,9 +2283,12 @@ def verify_required_columns(dataframe):
     
     # Nếu có cột bị thiếu
     if missing_columns:
-        messagebox.showerror("Thiếu cột dữ liệu", 
-                            f"File Excel thiếu các cột sau: {', '.join(missing_columns)}.\n\n"
-                            f"Vui lòng kiểm tra lại tên cột hoặc cấu hình tên cột trong ứng dụng.")
+        ToastNotification.show(
+            f"❌ Thiếu cột dữ liệu: {', '.join(missing_columns)}\n"
+            f"💡 Giải pháp:\n"
+            f"  • Kiểm tra tên cột trong file Excel\n"
+            f"  • Hoặc vào File > Cài đặt để cấu hình lại tên cột",
+            "error")
         return False
     
     return True
@@ -1720,7 +2347,9 @@ def create_ui():
     global entry_correct_count, entry_exam_code
     global entry_max_questions, score_per_q_label
     global score_info_label, entry_direct_score, stats_label
-    global highest_score_label, lowest_score_label  # Thêm biến cho điểm cao/thấp    
+    global highest_score_label, lowest_score_label  # Thêm biến cho điểm cao/thấp
+    global progress_bar, progress_label, high_score_count, medium_score_count, low_score_count, no_score_count  # Dashboard widgets
+    global undo_button, redo_button  # Undo/Redo buttons
     
     # Khởi tạo style
     style = ttk.Style()
@@ -1829,11 +2458,11 @@ def create_ui():
                 update_stats()
                 update_score_extremes()
                 status_label.config(text=f"✅ Đã làm mới dữ liệu")
-                messagebox.showinfo("Thành công", "Đã làm mới dữ liệu")
+                ToastNotification.show("✅ Đã làm mới dữ liệu", "success")
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể đọc file: {str(e)}")
         else:
-            messagebox.showinfo("Thông báo", "Chưa chọn file")
+            ToastNotification.show("ℹ️ Chưa chọn file", "info")
     
     # ========== MAIN CONTAINER - 2 CỘT ==========
     main_container = ttk.Frame(root, style='TFrame')
@@ -1849,7 +2478,7 @@ def create_ui():
     left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 6))
     
     # Search bar
-    search_frame = ttk.LabelFrame(left_column, text="🔍 Tìm Kiếm", padding=8)
+    search_frame = ttk.LabelFrame(left_column, text="🔍 Tìm Kiếm & Lọc", padding=8)
     search_frame.pack(fill="x", pady=(0, 6))
     
     search_input_frame = ttk.Frame(search_frame)
@@ -1863,7 +2492,103 @@ def create_ui():
     ttk.Button(search_input_frame, text="➕ Thêm", 
               command=add_student, style='Success.TButton', width=10).pack(side="left")
     
-    ttk.Label(search_frame, text="💡 Ctrl+F để tìm nhanh", 
+    # Undo/Redo buttons - thêm global để update được
+    global undo_button, redo_button
+    undo_redo_frame = ttk.Frame(search_frame)
+    undo_redo_frame.pack(fill="x", pady=(4, 0))
+    
+    undo_button = ttk.Button(undo_redo_frame, text="⏪ Hoàn tác", 
+                            command=perform_undo, width=12, state='disabled')
+    undo_button.pack(side="left", padx=(0, 4))
+    ToolTip(undo_button, "Hoàn tác thao tác cuối (Ctrl+Z)")
+    
+    redo_button = ttk.Button(undo_redo_frame, text="⏩ Làm lại", 
+                            command=perform_redo, width=12, state='disabled')
+    redo_button.pack(side="left")
+    ToolTip(redo_button, "Làm lại thao tác đã hoàn tác (Ctrl+Y)")
+    
+    # Filter nâng cao
+    filter_frame = ttk.Frame(search_frame)
+    filter_frame.pack(fill="x", pady=(6, 0))
+    
+    ttk.Label(filter_frame, text="🎯 Lọc nhanh:", 
+             font=(config['ui']['font_family'], 9)).pack(side="left", padx=(0, 5))
+    
+    def apply_quick_filter(filter_type):
+        """Áp dụng filter nhanh"""
+        global df
+        if df is None or df.empty:
+            return
+        
+        # Xóa treeview
+        for item in tree.get_children():
+            tree.delete(item)
+        
+        # Tìm cột
+        name_col = find_matching_column(df, config['columns']['name'])
+        score_col = 'Điểm'
+        exam_col = 'Mã đề'
+        
+        # Áp dụng filter
+        if filter_type == 'all':
+            filtered_df = df
+        elif filter_type == 'high':  # Điểm >= 7
+            filtered_df = df[df[score_col] >= 7]
+        elif filter_type == 'medium':  # 5 <= Điểm < 7
+            filtered_df = df[(df[score_col] >= 5) & (df[score_col] < 7)]
+        elif filter_type == 'low':  # Điểm < 5
+            filtered_df = df[df[score_col] < 5]
+        elif filter_type == 'no_score':  # Chưa có điểm
+            filtered_df = df[df[score_col].isna()]
+        else:
+            filtered_df = df
+        
+        # Hiển thị kết quả
+        display_limit = 200 if len(filtered_df) > 200 else len(filtered_df)
+        
+        def apply_color(item_id, score_val):
+            try:
+                if pd.notna(score_val):
+                    score = float(score_val)
+                    if score < 5:
+                        tree.item(item_id, tags=('low_score',))
+                    elif score < 7:
+                        tree.item(item_id, tags=('medium_score',))
+                    else:
+                        tree.item(item_id, tags=('high_score',))
+                else:
+                    tree.item(item_id, tags=('no_score',))
+            except:
+                tree.item(item_id, tags=('no_score',))
+        
+        for _, row in filtered_df.head(display_limit).iterrows():
+            values = [
+                row[name_col] if name_col in row else "",
+                row[exam_col] if exam_col in row and pd.notna(row[exam_col]) else "",
+                f"{row[score_col]:.2f}" if score_col in row and pd.notna(row[score_col]) else "Chưa có điểm"
+            ]
+            item_id = tree.insert('', 'end', values=values)
+            if score_col in row:
+                apply_color(item_id, row[score_col])
+        
+        if len(filtered_df) > display_limit:
+            tree.insert('', 'end', values=(f"--- Hiển thị {display_limit}/{len(filtered_df)} kết quả ---", "", ""))
+        
+        # Hiển thị toast
+        ToastNotification.show(f"Đã lọc: {len(filtered_df)} học sinh", "info")
+    
+    ttk.Button(filter_frame, text="Tất cả", 
+              command=lambda: apply_quick_filter('all'), width=8).pack(side="left", padx=2)
+    ttk.Button(filter_frame, text="🟢 ≥7", 
+              command=lambda: apply_quick_filter('high'), width=8).pack(side="left", padx=2)
+    ttk.Button(filter_frame, text="🟡 5-7", 
+              command=lambda: apply_quick_filter('medium'), width=8).pack(side="left", padx=2)
+    ttk.Button(filter_frame, text="🔴 <5", 
+              command=lambda: apply_quick_filter('low'), width=8).pack(side="left", padx=2)
+    ttk.Button(filter_frame, text="⚪ Chưa", 
+              command=lambda: apply_quick_filter('no_score'), width=8).pack(side="left", padx=2)
+    
+    ttk.Label(search_frame, text="💡 Ctrl+F để tìm nhanh | Click header để sắp xếp", 
              font=(config['ui']['font_family'], 8),
              foreground=config['ui']['theme']['text_secondary']).pack(pady=(4, 0))
     
@@ -1875,13 +2600,107 @@ def create_ui():
     columns = ('name', 'exam_code', 'score')
     tree = ttk.Treeview(list_frame, columns=columns, show='headings', style='Treeview')
     
-    tree.heading('name', text=f"👤 {config['columns']['name']}")
-    tree.heading('exam_code', text=f"📋 Mã Đề")
-    tree.heading('score', text=f"📊 Điểm")
+    # Biến lưu trạng thái sort
+    sort_column = {'col': None, 'reverse': False}
+    
+    def sort_treeview(col):
+        """Sắp xếp treeview theo cột được click"""
+        global df
+        
+        if df is None or df.empty:
+            return
+        
+        # Đảo ngược thứ tự nếu click vào cùng cột
+        if sort_column['col'] == col:
+            sort_column['reverse'] = not sort_column['reverse']
+        else:
+            sort_column['col'] = col
+            sort_column['reverse'] = False
+        
+        # Map column name to dataframe column
+        col_map = {
+            'name': find_matching_column(df, config['columns']['name']),
+            'exam_code': 'Mã đề',
+            'score': 'Điểm'
+        }
+        
+        df_col = col_map.get(col)
+        if df_col and df_col in df.columns:
+            # Sort dataframe
+            if col == 'score':
+                # Sắp xếp điểm: đưa NaN xuống cuối
+                df_sorted = df.sort_values(
+                    by=df_col, 
+                    ascending=not sort_column['reverse'],
+                    na_position='last'
+                )
+            else:
+                df_sorted = df.sort_values(
+                    by=df_col, 
+                    ascending=not sort_column['reverse']
+                )
+            
+            # Xóa treeview hiện tại
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            # Hiển thị lại với thứ tự mới
+            display_limit = 100 if len(df_sorted) > 100 else len(df_sorted)
+            
+            # Hàm áp dụng màu theo điểm
+            def apply_color(item_id, score_val):
+                try:
+                    if pd.notna(score_val):
+                        score = float(score_val)
+                        if score < 5:
+                            tree.item(item_id, tags=('low_score',))
+                        elif score < 7:
+                            tree.item(item_id, tags=('medium_score',))
+                        else:
+                            tree.item(item_id, tags=('high_score',))
+                    else:
+                        tree.item(item_id, tags=('no_score',))
+                except:
+                    tree.item(item_id, tags=('no_score',))
+            
+            name_col = col_map['name']
+            exam_col = col_map['exam_code']
+            score_col = col_map['score']
+            
+            for _, row in df_sorted.head(display_limit).iterrows():
+                values = [
+                    row[name_col] if name_col in row else "",
+                    row[exam_col] if exam_col in row and pd.notna(row[exam_col]) else "",
+                    f"{row[score_col]:.2f}" if score_col in row and pd.notna(row[score_col]) else "Chưa có điểm"
+                ]
+                item_id = tree.insert('', 'end', values=values)
+                
+                # Áp dụng màu
+                if score_col in row:
+                    apply_color(item_id, row[score_col])
+            
+            if len(df_sorted) > display_limit:
+                tree.insert('', 'end', values=(f"--- Hiển thị {display_limit}/{len(df_sorted)} học sinh ---", "", ""))
+            
+            # Cập nhật icon cho header
+            arrow = " ▼" if sort_column['reverse'] else " ▲"
+            tree.heading('name', text=f"👤 {config['columns']['name']}{arrow if col == 'name' else ''}")
+            tree.heading('exam_code', text=f"📋 Mã Đề{arrow if col == 'exam_code' else ''}")
+            tree.heading('score', text=f"📊 Điểm{arrow if col == 'score' else ''}")
+    
+    tree.heading('name', text=f"👤 {config['columns']['name']}", command=lambda: sort_treeview('name'))
+    tree.heading('exam_code', text=f"📋 Mã Đề", command=lambda: sort_treeview('exam_code'))
+    tree.heading('score', text=f"📊 Điểm", command=lambda: sort_treeview('score'))
     
     tree.column('name', width=750, minwidth=400)
     tree.column('exam_code', width=150, minwidth=100, anchor='center')
     tree.column('score', width=150, minwidth=100, anchor='center')
+    
+    # Định nghĩa màu cho các tags (tô màu theo điểm)
+    tree.tag_configure('high_score', background='#D1FAE5', foreground='#065F46')  # Xanh lá nhạt
+    tree.tag_configure('medium_score', background='#FEF3C7', foreground='#92400E')  # Vàng nhạt
+    tree.tag_configure('low_score', background='#FEE2E2', foreground='#991B1B')  # Đỏ nhạt
+    tree.tag_configure('no_score', background='#F3F4F6', foreground='#6B7280')  # Xám nhạt
     
     vsb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
     hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=tree.xview)
@@ -1937,19 +2756,63 @@ def create_ui():
     scrollable_right_frame.bind("<Leave>", unbind_mousewheel)
     
     # Thống kê
-    stats_card = ttk.LabelFrame(scrollable_right_frame, text="📊 Thống Kê", padding=6)
+    stats_card = ttk.LabelFrame(scrollable_right_frame, text="📊 Thống Kê Chi Tiết", padding=10)
     stats_card.pack(fill="x", pady=(0, 6), padx=4)
     
+    # Progress bar cho tỷ lệ hoàn thành
+    progress_frame = ttk.Frame(stats_card)
+    progress_frame.pack(fill="x", pady=(0, 8))
+    
+    ttk.Label(progress_frame, text="Tiến độ nhập điểm:", 
+             font=(config['ui']['font_family'], 9)).pack(anchor="w")
+    
+    progress_bar = ttk.Progressbar(progress_frame, mode='determinate', length=200)
+    progress_bar.pack(fill="x", pady=(2, 2))
+    
+    progress_label = ttk.Label(progress_frame, text="0%", 
+                              font=(config['ui']['font_family'], 9, 'bold'),
+                              foreground=config['ui']['theme']['primary'])
+    progress_label.pack(anchor="w")
+    
+    # Thống kê tổng quan
     stats_label = ttk.Label(stats_card, text="0/0 có điểm", 
                           font=(config['ui']['font_family'], 10, 'bold'))
-    stats_label.pack(pady=2)
+    stats_label.pack(pady=4)
     
-    highest_score_label = ttk.Label(stats_card, text="🏆 N/A", 
+    # Phân loại theo điểm
+    category_frame = ttk.Frame(stats_card)
+    category_frame.pack(fill="x", pady=4)
+    
+    high_score_count = ttk.Label(category_frame, text="🟢 Giỏi (≥7): 0", 
+                                 font=(config['ui']['font_family'], 9),
+                                 foreground='#065F46')
+    high_score_count.pack(anchor="w", pady=1)
+    
+    medium_score_count = ttk.Label(category_frame, text="🟡 Khá (5-7): 0", 
+                                   font=(config['ui']['font_family'], 9),
+                                   foreground='#92400E')
+    medium_score_count.pack(anchor="w", pady=1)
+    
+    low_score_count = ttk.Label(category_frame, text="🔴 Yếu (<5): 0", 
+                                font=(config['ui']['font_family'], 9),
+                                foreground='#991B1B')
+    low_score_count.pack(anchor="w", pady=1)
+    
+    no_score_count = ttk.Label(category_frame, text="⚪ Chưa có: 0", 
+                               font=(config['ui']['font_family'], 9),
+                               foreground='#6B7280')
+    no_score_count.pack(anchor="w", pady=1)
+    
+    # Separator
+    ttk.Separator(stats_card, orient='horizontal').pack(fill="x", pady=6)
+    
+    # Điểm cao/thấp nhất
+    highest_score_label = ttk.Label(stats_card, text="🏆 Cao nhất: N/A", 
                                   font=(config['ui']['font_family'], 9),
                                   foreground=config['ui']['theme']['success'])
     highest_score_label.pack(pady=2)
     
-    lowest_score_label = ttk.Label(stats_card, text="📉 N/A", 
+    lowest_score_label = ttk.Label(stats_card, text="📉 Thấp nhất: N/A", 
                                  font=(config['ui']['font_family'], 9),
                                  foreground=config['ui']['theme']['warning'])
     lowest_score_label.pack(pady=2)
@@ -2181,9 +3044,17 @@ def check_updates_async():
     print("import_score: Đã gọi check_updates_async từ module")
 
 def update_stats():
-    """Cập nhật các thống kê cơ bản"""
+    """Cập nhật các thống kê cơ bản với progress bar và phân loại chi tiết"""
+    global progress_bar, progress_label, high_score_count, medium_score_count, low_score_count, no_score_count
+    
     if df is None or df.empty:
-        stats_label.config(text="Không có dữ liệu để hiển thị thống kê")
+        stats_label.config(text="Không có dữ liệu")
+        progress_bar['value'] = 0
+        progress_label.config(text="0%")
+        high_score_count.config(text="🟢 Giỏi (≥7): 0")
+        medium_score_count.config(text="🟡 Khá (5-7): 0")
+        low_score_count.config(text="🔴 Yếu (<5): 0")
+        no_score_count.config(text="⚪ Chưa có: 0")
         return
         
     total_students = len(df)
@@ -2191,16 +3062,33 @@ def update_stats():
     
     # Đếm số học sinh có điểm
     students_with_scores = df[score_column].notna().sum()
+    students_no_scores = total_students - students_with_scores
     
-    # Hiển thị thông tin
-    stats_text = f"Tổng số học sinh: {total_students} | Đã có điểm: {students_with_scores} ({students_with_scores/total_students:.1%})"
-    stats_label.config(text=stats_text)
+    # Tính phần trăm
+    percentage = (students_with_scores / total_students * 100) if total_students > 0 else 0
+    
+    # Cập nhật progress bar
+    progress_bar['value'] = percentage
+    progress_label.config(text=f"{percentage:.1f}% ({students_with_scores}/{total_students})")
+    
+    # Phân loại theo điểm
+    df_with_scores = df[df[score_column].notna()]
+    high_count = len(df_with_scores[df_with_scores[score_column] >= 7])
+    medium_count = len(df_with_scores[(df_with_scores[score_column] >= 5) & (df_with_scores[score_column] < 7)])
+    low_count = len(df_with_scores[df_with_scores[score_column] < 5])
+    
+    # Cập nhật labels
+    stats_label.config(text=f"{students_with_scores}/{total_students} đã có điểm")
+    high_score_count.config(text=f"🟢 Giỏi (≥7): {high_count} ({high_count/total_students*100:.1f}%)" if total_students > 0 else "🟢 Giỏi (≥7): 0")
+    medium_score_count.config(text=f"🟡 Khá (5-7): {medium_count} ({medium_count/total_students*100:.1f}%)" if total_students > 0 else "🟡 Khá (5-7): 0")
+    low_score_count.config(text=f"🔴 Yếu (<5): {low_count} ({low_count/total_students*100:.1f}%)" if total_students > 0 else "🔴 Yếu (<5): 0")
+    no_score_count.config(text=f"⚪ Chưa có: {students_no_scores} ({students_no_scores/total_students*100:.1f}%)" if total_students > 0 else "⚪ Chưa có: 0")
 
 def update_score_extremes():
     """Cập nhật điểm cao nhất và thấp nhất"""
     if df is None or df.empty:
-        highest_score_label.config(text="Điểm cao nhất: N/A")
-        lowest_score_label.config(text="Điểm thấp nhất: N/A")
+        highest_score_label.config(text="🏆 Cao nhất: N/A")
+        lowest_score_label.config(text="📉 Thấp nhất: N/A")
         return
         
     score_column = config['columns']['score']
@@ -2211,27 +3099,27 @@ def update_score_extremes():
     
     # Nếu không có ai có điểm
     if df_with_scores.empty:
-        highest_score_label.config(text="Điểm cao nhất: N/A")
-        lowest_score_label.config(text="Điểm thấp nhất: N/A")
+        highest_score_label.config(text="🏆 Cao nhất: N/A")
+        lowest_score_label.config(text="📉 Thấp nhất: N/A")
         return
     
     # Tìm điểm cao nhất
     max_score = df_with_scores[score_column].max()
     max_students = df_with_scores[df_with_scores[score_column] == max_score][name_column].tolist()
-    max_students_text = ", ".join(max_students[:3])
-    if len(max_students) > 3:
-        max_students_text += f" và {len(max_students) - 3} học sinh khác"
+    max_students_text = ", ".join(max_students[:2])
+    if len(max_students) > 2:
+        max_students_text += f" +{len(max_students) - 2}"
     
     # Tìm điểm thấp nhất
     min_score = df_with_scores[score_column].min()
     min_students = df_with_scores[df_with_scores[score_column] == min_score][name_column].tolist()
-    min_students_text = ", ".join(min_students[:3])
-    if len(min_students) > 3:
-        min_students_text += f" và {len(min_students) - 3} học sinh khác"
+    min_students_text = ", ".join(min_students[:2])
+    if len(min_students) > 2:
+        min_students_text += f" +{len(min_students) - 2}"
     
     # Cập nhật giao diện
-    highest_score_label.config(text=f"Điểm cao nhất: {max_score} ({max_students_text})")
-    lowest_score_label.config(text=f"Điểm thấp nhất: {min_score} ({min_students_text})")
+    highest_score_label.config(text=f"🏆 Cao nhất: {max_score:.2f} ({max_students_text})")
+    lowest_score_label.config(text=f"📉 Thấp nhất: {min_score:.2f} ({min_students_text})")
 
 def delayed_search(event=None):
     """Tìm kiếm sau một khoảng thời gian để tránh quá nhiều tìm kiếm liên tiếp"""
@@ -2525,7 +3413,7 @@ def generate_report():
         
         status_label.config(text=f"Đã tạo báo cáo PDF: {os.path.basename(file_path)}", 
 )
-        messagebox.showinfo("Thành công", f"Đã tạo báo cáo PDF tại:\n{file_path}")
+        ToastNotification.show(f"✅ Đã tạo báo cáo PDF tại:\n{file_path}", "success")
         
     except Exception as e:
         status_label.config(text=f"Lỗi tạo báo cáo: {str(e)}", 
@@ -2537,25 +3425,25 @@ def show_score_distribution():
     """Hiển thị biểu đồ phân phối điểm số"""
     global df
     if df is None or df.empty:
-        messagebox.showinfo("Thông báo", "Không có dữ liệu để hiển thị thống kê")
+        ToastNotification.show("ℹ️ Không có dữ liệu để hiển thị thống kê", "info")
         return
         
     if 'Điểm' not in df.columns:
-        messagebox.showinfo("Thông báo", "Không có cột điểm trong dữ liệu")
+        ToastNotification.show("ℹ️ Không có cột điểm trong dữ liệu", "info")
         return
     
     # Lọc chỉ lấy học sinh có điểm
     scores = df[df['Điểm'].notna()]['Điểm']
     
     if len(scores) == 0:
-        messagebox.showinfo("Thông báo", "Chưa có học sinh nào có điểm")
+        ToastNotification.show("ℹ️ Chưa có học sinh nào có điểm", "info")
         return
     
     try:
         # Tạo cửa sổ mới với style hiện đại
         chart_window = tk.Toplevel(root)
-        chart_window.title("📊 Biểu Đồ Phân Phối Điểm Số")
-        chart_window.geometry("1000x700")
+        chart_window.title("📊 Thống Kê Điểm Số Lớp")
+        chart_window.geometry("1100x650")
         chart_window.transient(root)
         chart_window.configure(bg=config['ui']['theme']['background'])
         
@@ -2564,7 +3452,7 @@ def show_score_distribution():
         chart_frame.pack(fill="both", expand=True, padx=15, pady=15)
         
         # Tạo figure với dark background
-        fig = Figure(figsize=(10, 7), dpi=100, facecolor=config['ui']['theme']['background'])
+        fig = Figure(figsize=(11, 6), dpi=100, facecolor=config['ui']['theme']['background'])
         
         # Tính toán thống kê
         mean_score = scores.mean()
@@ -2573,90 +3461,83 @@ def show_score_distribution():
         passed = (scores >= pass_threshold).sum()
         failed = len(scores) - passed
         
-        # Layout: 2x2 grid cho 4 biểu đồ
-        gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+        # Phân loại học lực
+        excellent = (scores >= 8.5).sum()  # Giỏi
+        good = ((scores >= 7) & (scores < 8.5)).sum()  # Khá
+        average = ((scores >= 5) & (scores < 7)).sum()  # TB
+        weak = (scores < 5).sum()  # Yếu
         
-        # 1. Histogram với gradient đẹp
-        ax1 = fig.add_subplot(gs[0, :])
-        n, bins, patches = ax1.hist(scores, bins=15, alpha=0.8, edgecolor='white', linewidth=1.2)
+        # Layout: 1 hàng 3 cột - đơn giản, dễ nhìn
+        gs = fig.add_gridspec(1, 3, wspace=0.3)
         
-        # Gradient màu cho histogram
-        for i, patch in enumerate(patches):
-            value = (bins[i] + bins[i+1]) / 2
-            if value < 5:
-                patch.set_facecolor('#FC8181')  # Đỏ cho điểm thấp
-            elif value < 7:
-                patch.set_facecolor('#F6AD55')  # Cam cho điểm trung bình
-            elif value < 8.5:
-                patch.set_facecolor('#68D391')  # Xanh lá cho điểm khá
-            else:
-                patch.set_facecolor('#667EEA')  # Tím cho điểm giỏi
+        # 1. BIỂU ĐỒ CỘT - Phân loại học lực (CHÍNH)
+        ax1 = fig.add_subplot(gs[0, 0:2])  # Chiếm 2/3 không gian
         
-        ax1.set_title('Phân Phối Điểm Số', fontsize=14, fontweight='bold', color='white', pad=15)
-        ax1.set_xlabel('Điểm', fontsize=11, color='white')
-        ax1.set_ylabel('Số Học Sinh', fontsize=11, color='white')
+        categories = ['Giỏi\n(≥8.5)', 'Khá\n(7-8.5)', 'TB\n(5-7)', 'Yếu\n(<5)']
+        values = [excellent, good, average, weak]
+        colors = ['#667EEA', '#68D391', '#F6AD55', '#FC8181']
+        
+        bars = ax1.bar(categories, values, color=colors, alpha=0.8, edgecolor='white', linewidth=2)
+        
+        # Thêm số liệu lên đầu mỗi cột
+        for bar, value in zip(bars, values):
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{int(value)} HS\n({value/len(scores)*100:.1f}%)',
+                    ha='center', va='bottom', color='white', fontsize=11, fontweight='bold')
+        
+        ax1.set_title('PHÂN LOẠI HỌC LỰC', fontsize=15, fontweight='bold', color='white', pad=15)
+        ax1.set_ylabel('Số Học Sinh', fontsize=12, color='white')
         ax1.set_facecolor(config['ui']['theme']['card'])
-        ax1.grid(True, alpha=0.2, color='white', linestyle='--')
-        ax1.tick_params(colors='white')
+        ax1.grid(True, alpha=0.2, axis='y', color='white', linestyle='--')
+        ax1.tick_params(colors='white', labelsize=10)
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
+        ax1.spines['left'].set_color('white')
+        ax1.spines['bottom'].set_color('white')
         
-        # Đường trung bình và trung vị
-        ax1.axvline(mean_score, color='#ED64A6', linestyle='--', linewidth=2, label=f'TB: {mean_score:.2f}')
-        ax1.axvline(median_score, color='#4299E1', linestyle='--', linewidth=2, label=f'TV: {median_score:.2f}')
-        ax1.legend(facecolor=config['ui']['theme']['card'], edgecolor='white', labelcolor='white')
-        
-        # 2. Pie chart tỷ lệ đạt/không đạt
-        ax2 = fig.add_subplot(gs[1, 0])
-        labels = [f'Đạt (≥5)\n{passed} HS', f'Chưa đạt (<5)\n{failed} HS']
-        sizes = [passed, failed]
-        colors = ['#68D391', '#FC8181']
-        explode = (0.05, 0.05)
-        
-        wedges, texts, autotexts = ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', 
-                                           startangle=90, explode=explode, 
-                                           textprops={'color': 'white', 'fontsize': 10, 'weight': 'bold'})
-        ax2.set_title('Tỷ Lệ Đạt/Chưa Đạt', fontsize=12, fontweight='bold', color='white', pad=10)
+        # 2. THỐNG KÊ TỔNG QUAN - Bảng số liệu
+        ax2 = fig.add_subplot(gs[0, 2])
+        ax2.axis('off')
         ax2.set_facecolor(config['ui']['theme']['card'])
         
-        # 3. Box plot
-        ax3 = fig.add_subplot(gs[1, 1])
-        bp = ax3.boxplot([scores], vert=True, patch_artist=True, widths=0.5,
-                         boxprops=dict(facecolor='#667EEA', alpha=0.7),
-                         medianprops=dict(color='#ED64A6', linewidth=2),
-                         whiskerprops=dict(color='white'),
-                         capprops=dict(color='white'),
-                         flierprops=dict(markerfacecolor='#FC8181', marker='o', markersize=8))
+        # Tạo bảng thông tin (không dùng emoji để tránh lỗi font)
+        stats_data = [
+            ['TỔNG SỐ', f'{len(scores)} HS'],
+            ['', ''],
+            ['Đạt (≥5)', f'{passed} HS'],
+            ['Chưa đạt', f'{failed} HS'],
+            ['Tỷ lệ đạt', f'{passed/len(scores)*100:.1f}%'],
+            ['', ''],
+            ['Điểm TB', f'{mean_score:.2f}'],
+            ['Trung bình', f'{median_score:.2f}'],
+            ['Cao nhất', f'{scores.max():.2f}'],
+            ['Thấp nhất', f'{scores.min():.2f}'],
+        ]
         
-        ax3.set_title('Phân Tích Phân Vị', fontsize=12, fontweight='bold', color='white', pad=10)
-        ax3.set_ylabel('Điểm', fontsize=11, color='white')
-        ax3.set_facecolor(config['ui']['theme']['card'])
-        ax3.grid(True, alpha=0.2, axis='y', color='white', linestyle='--')
-        ax3.tick_params(colors='white')
-        ax3.set_xticklabels(['Điểm Số'], color='white')
+        table = ax2.table(cellText=stats_data, cellLoc='left',
+                         bbox=[0, 0, 1, 1],
+                         colWidths=[0.5, 0.5])
         
-        # Thêm text thống kê bên cạnh
-        q1 = scores.quantile(0.25)
-        q3 = scores.quantile(0.75)
-        stats_text = f'Min: {scores.min():.2f}\nQ1: {q1:.2f}\nMedian: {median_score:.2f}\nQ3: {q3:.2f}\nMax: {scores.max():.2f}'
-        ax3.text(1.5, median_score, stats_text, fontsize=9, color='white', 
-                bbox=dict(boxstyle='round', facecolor=config['ui']['theme']['card'], alpha=0.8))
+        table.auto_set_font_size(False)
+        table.set_fontsize(11)
         
-        # Set màu nền cho toàn bộ figure
-        for ax in [ax1, ax2, ax3]:
-            for spine in ax.spines.values():
-                spine.set_edgecolor('white')
-                spine.set_linewidth(0.5)
+        # Style cho bảng
+        for i, row in enumerate(stats_data):
+            for j in range(2):
+                cell = table[(i, j)]
+                cell.set_facecolor(config['ui']['theme']['card'])
+                cell.set_text_props(color='white', weight='bold' if j == 0 else 'normal')
+                cell.set_edgecolor('white' if row[0] else config['ui']['theme']['card'])
+                cell.set_linewidth(0.5 if row[0] else 0)
+        
+        ax2.set_title('THỐNG KÊ', fontsize=13, fontweight='bold', color='white', pad=10)
         
         fig.tight_layout(pad=2.0)
         
         # Tạo canvas để hiển thị biểu đồ
         canvas = FigureCanvasTkAgg(fig, chart_frame)
         canvas.draw()
-        canvas.get_tk_widget().pack(fill="both", expand=True)
-        
-        # Thêm thanh công cụ (toolbar)
-        from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
-        toolbar = NavigationToolbar2Tk(canvas, chart_frame)
-        toolbar.update()
         canvas.get_tk_widget().pack(fill="both", expand=True)
         
         # Thêm nút để lưu biểu đồ
@@ -2675,11 +3556,12 @@ def show_score_distribution():
                 title="Lưu biểu đồ"
             )
             if save_path:
-                fig.savefig(save_path, dpi=300, bbox_inches='tight')
-                messagebox.showinfo("Thành công", f"Đã lưu biểu đồ tại:\n{save_path}")
+                fig.savefig(save_path, dpi=300, bbox_inches='tight', facecolor=config['ui']['theme']['background'])
+                ToastNotification.show(f"✅ Đã lưu biểu đồ tại:\n{save_path}", "success")
         
-        ttk.Button(button_frame, text="Lưu biểu đồ", command=save_chart).pack(side="right")
-        ttk.Button(button_frame, text="Đóng", command=chart_window.destroy).pack(side="right", padx=5)
+        ttk.Button(button_frame, text="Lưu biểu đồ", command=save_chart).pack(side="left")
+        ttk.Button(button_frame, text="Làm mới", command=lambda: (chart_window.destroy(), show_score_distribution())).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Đóng", command=chart_window.destroy).pack(side="right")
         
     except Exception as e:
         messagebox.showerror("Lỗi", f"Không thể hiển thị biểu đồ: {str(e)}")
@@ -2824,10 +3706,17 @@ function_menu.add_command(label="Kiểm tra cập nhật", command=lambda: check
 function_menu.add_command(label="Thông tin", command=show_about)
 
 # Thêm binding phím tắt
-root.bind('<Control-z>', undo)
+root.bind('<Control-z>', lambda e: perform_undo())  # Undo
+root.bind('<Control-y>', lambda e: perform_redo())  # Redo
 root.bind('<Control-f>', focus_student_search)
 root.bind('<Control-g>', focus_direct_score)
 root.bind('<Control-d>', focus_correct_count)
+root.bind('<Control-s>', lambda e: save_excel() if df is not None else None)
+root.bind('<Control-o>', lambda e: select_file())
+root.bind('<Control-n>', lambda e: entry_student_name.focus_set())
+
+# Cập nhật menu recent files sau khi tạo UI
+update_recent_files_menu()
 
 # Cập nhật thời gian hoạt động cuối cùng khi có sự kiện
 root.bind_all("<Motion>", update_activity_time)
