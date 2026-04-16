@@ -1,4 +1,7 @@
 {
+    "3.1.1-hotfix": [
+        "Fix build error do github làm"
+    ],
     "3.1-release": [
         "Sửa lỗi giao diện sơ bộ và điều chỉnh một số layout trên màn hình chính",
         "Cải thiện trải nghiệm người dùng: thông báo toast rõ ràng hơn và ổn định",

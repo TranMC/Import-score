@@ -216,10 +216,10 @@ def build_executable(version, config_files):
         '--exclude-module=IPython',
         '--exclude-module=notebook',
         '--exclude-module=jupyter',
-        '--exclude-module=tkinter.test',
-        '--exclude-module=unittest',
-        '--exclude-module=test',
         '--exclude-module=lib2to3',
+        # Loại trừ pyparsing.testing thay vì toàn bộ unittest
+        # (pyparsing.testing import unittest, nếu exclude unittest thì matplotlib crash)
+        '--exclude-module=pyparsing.testing',
         # Loại trừ các file tự sinh (runtime-generated) để tắt WARNING không cần thiết
         '--exclude-module=pycparser.lextab',
         '--exclude-module=pycparser.yacctab',
