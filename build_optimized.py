@@ -40,7 +40,8 @@ def check_dependencies():
         "PyInstaller>=5.13.0",
         "cryptography>=41.0.0",
         "Pillow>=10.0.0",
-        "openpyxl>=3.1.0"
+        "openpyxl>=3.1.0",
+        "customtkinter>=5.2.0"
     ]
     
     # Cài đặt các phụ thuộc thiếu
@@ -87,7 +88,7 @@ def check_source_code():
         "themes.py",
         "ui_utils.py",
         "version_utils.py",
-        "check_for_updates.py"  # Sử dụng file chính thay vì file đã sửa
+        "check_for_updates.py"
     ]
     
     try:
@@ -113,9 +114,12 @@ def update_version_info():
     
     try:
         # Đọc thông tin phiên bản hiện tại
-        with open(version_json_path, 'r', encoding='utf-8') as f:
-            version_data = json.load(f)
-        
+        if os.path.exists(version_json_path):
+            with open(version_json_path, 'r', encoding='utf-8') as f:
+                version_data = json.load(f)
+        else:
+            version_data = {"version": "5.0", "build_date": ""}
+            
         # Cập nhật build_date thành ngày hiện tại
         current_date = datetime.now().strftime("%Y-%m-%d")
         version_data['build_date'] = current_date
@@ -127,18 +131,10 @@ def update_version_info():
         log(f"Đã cập nhật build_date thành {current_date}", "SUCCESS")
         
         # Trả về phiên bản hiện tại
-        return version_data.get("version", "unknown")
+        return version_data.get("version", "5.0")
     except Exception as e:
         log(f"Lỗi khi cập nhật build_date: {str(e)}", "ERROR")
-        # Thử đọc từ version.txt (cách cũ)
-        try:
-            with open("version.txt", "r", encoding="utf-8") as f:
-                version = f.read().strip()
-                log(f"Đọc phiên bản từ version.txt: {version}", "WARNING")
-                return version
-        except:
-            log("Không thể đọc thông tin phiên bản, sử dụng giá trị mặc định", "WARNING")
-            return "4.0"  # Phiên bản mặc định nếu không đọc được
+        return "5.0"
 
 def prepare_build_environment():
     """Chuẩn bị môi trường build"""
@@ -149,11 +145,6 @@ def prepare_build_environment():
     app_config_file = os.path.join(current_dir, "app_config.json")
     version_json_file = os.path.join(current_dir, "version.json")
     changelog_json_file = os.path.join(current_dir, "changelog.json")
-    
-    # QUAN TRỌNG: File app_config.json được bundle vào .exe sẽ làm MẪU
-    # Khi app chạy lần đầu, nó sẽ copy config này vào AppData
-    # Các lần sau, app sẽ đọc/ghi từ AppData (không ảnh hưởng file .exe)
-    log("File app_config.json hiện tại sẽ được dùng làm mẫu cho app khi build", "INFO")
     
     # Kiểm tra xem các file cần thiết có tồn tại không
     missing_files = []
@@ -173,29 +164,6 @@ def prepare_build_environment():
     if not os.path.exists("dist"):
         os.makedirs("dist")
         log("Đã tạo thư mục dist", "INFO")
-    
-    # Kiểm tra UPX nếu có
-    upx_dir = os.path.join(current_dir, "upx")
-    if os.path.exists(upx_dir):
-        log(f"Đã tìm thấy UPX trong thư mục: {upx_dir}", "INFO")
-    else:
-        log("Không tìm thấy UPX. Build sẽ không được nén. Bạn có thể tải UPX từ https://github.com/upx/upx/releases", "WARNING")
-      # Sử dụng phiên bản fixed của file check_for_updates.py
-    check_updates_fixed = os.path.join(current_dir, "check_for_updates_fixed.py")
-    check_updates = os.path.join(current_dir, "check_for_updates.py")
-    
-    if os.path.exists(check_updates_fixed):
-        log("Đã tìm thấy file check_for_updates_fixed.py, sẽ sử dụng phiên bản này", "INFO")
-        # Tạo bản sao dự phòng của file gốc nếu chưa có
-        if os.path.exists(check_updates) and not os.path.exists(check_updates + ".bak"):
-            shutil.copy(check_updates, check_updates + ".bak")
-            log("Đã tạo bản sao dự phòng của file check_for_updates.py", "INFO")
-        
-        # Copy file fixed để sử dụng
-        shutil.copy(check_updates_fixed, check_updates)
-        log("Đã sử dụng file check_for_updates_fixed.py cho build", "SUCCESS")
-    else:
-        log("Không tìm thấy file check_for_updates_fixed.py, sẽ sử dụng file check_for_updates.py hiện có", "INFO")
     
     log("Môi trường build đã sẵn sàng", "SUCCESS")
     
@@ -231,7 +199,7 @@ def build_executable(version, config_files):
         f'--add-data={app_config_file}{sep}.',
         f'--add-data={version_json_file}{sep}.',
         f'--add-data={changelog_json_file}{sep}.',
-        '--log-level=WARN',
+        '--log-level=ERROR',
         # Exclude các modules không cần thiết để giảm kích thước
         '--exclude-module=pytest',
         '--exclude-module=setuptools',
@@ -252,9 +220,20 @@ def build_executable(version, config_files):
         '--exclude-module=unittest',
         '--exclude-module=test',
         '--exclude-module=lib2to3',
-        # Collect mode cho numpy để tránh lỗi import từ source
+        # Loại trừ các file tự sinh (runtime-generated) để tắt WARNING không cần thiết
+        '--exclude-module=pycparser.lextab',
+        '--exclude-module=pycparser.yacctab',
+        # Loại trừ các module chỉ dành riêng cho macOS/Linux (không cần thiết trên Windows)
+        '--exclude-module=darkdetect._mac_detect',
+        '--exclude-module=darkdetect._linux_detect',
+        # Hook tùy chỉnh để loại trừ matplotlib.tests hoàn toàn
+        f'--additional-hooks-dir={os.path.join(os.path.dirname(os.path.abspath(__file__)), "hooks")}',
+        # Collect mode cho numpy và matplotlib
         '--collect-all=numpy',
         '--copy-metadata=numpy',
+        # Chỉ thu thập dữ liệu (fonts, stylesheets) của matplotlib
+        '--collect-data=matplotlib',
+        '--collect-binaries=matplotlib',
     ]
     
     # Thêm UPX nếu có

@@ -83,5 +83,83 @@
         }
     },
     "auto_backup": true,
-    "update_channel": "dev"
+    "update_channel": "dev",
+    "excel_reading": {
+        "header_detection": {
+            "enabled": true,
+            "max_search_rows": 50,
+            "multi_level_support": true,
+            "merge_separator": "_",
+            "min_columns_match": 3,
+            "validate_data_rows": true
+        },
+        "column_patterns": {
+            "student_info": {
+                "stt": {
+                    "patterns": ["STT", "Số TT", "Số thứ tự", "TT"],
+                    "regex": "^(STT|Số\\s*TT|Số\\s*thứ\\s*tự|TT)$",
+                    "required": false
+                },
+                "student_id": {
+                    "patterns": ["Mã định danh", "Mã HS", "MSSV", "Mã số", "ID", "Số báo danh"],
+                    "regex": "^(Mã\\s*định\\s*danh|Mã\\s*HS|MSSV|Mã\\s*số|ID|Số\\s*báo\\s*danh)",
+                    "required": false
+                },
+                "name": {
+                    "patterns": ["Họ và tên", "Tên học sinh", "Họ tên", "Tên", "Học sinh"],
+                    "regex": "^(Họ\\s*và\\s*tên|Tên\\s*học\\s*sinh|Họ\\s*tên|Tên|Học\\s*sinh)",
+                    "required": true
+                },
+                "dob": {
+                    "patterns": ["Ngày sinh", "Sinh nhật", "DOB"],
+                    "regex": "^(Ngày\\s*sinh|Sinh\\s*nhật|DOB)",
+                    "required": false
+                },
+                "gender": {
+                    "patterns": ["Giới tính", "Phái", "Nam/Nữ", "Sex"],
+                    "regex": "^(Giới\\s*tính|Phái|Nam\\s*/\\s*Nữ|Sex)",
+                    "required": false
+                }
+            },
+            "score_columns": {
+                "ddgtx": {
+                    "patterns": ["ĐĐGtx", "Điểm TX", "Điểm thường xuyên", "TX"],
+                    "regex": "^(ĐĐGtx|Điểm\\s*TX|Điểm\\s*thường\\s*xuyên|TX)[\\s_-]*(\\d*)$",
+                    "has_sub_columns": true,
+                    "sub_column_pattern": "^(\\d+)$",
+                    "description": "Điểm đánh giá thường xuyên"
+                },
+                "ddggk": {
+                    "patterns": ["ĐĐGgk", "ĐĐGgiữa kỳ", "Điểm GK", "Điểm giữa kỳ", "GK"],
+                    "regex": "^(ĐĐGgk|ĐĐGgiữa\\s*kỳ|Điểm\\s*GK|Điểm\\s*giữa\\s*kỳ|GK)$",
+                    "has_sub_columns": false,
+                    "description": "Điểm đánh giá giữa kỳ"
+                },
+                "ddgck": {
+                    "patterns": ["ĐĐGck", "ĐĐGcuối kỳ", "Điểm CK", "Điểm cuối kỳ", "CK"],
+                    "regex": "^(ĐĐGck|ĐĐGcuối\\s*kỳ|Điểm\\s*CK|Điểm\\s*cuối\\s*kỳ|CK)$",
+                    "has_sub_columns": false,
+                    "description": "Điểm đánh giá cuối kỳ"
+                },
+                "dtbmhki": {
+                    "patterns": ["ĐTBmhkI", "ĐTB HK1", "Điểm TB HK1", "Điểm trung bình HK1"],
+                    "regex": "^(ĐTBmhkI|ĐTB\\s*HK1|Điểm\\s*TB\\s*HK1|Điểm\\s*trung\\s*bình\\s*HK1)$",
+                    "has_sub_columns": false,
+                    "description": "Điểm trung bình môn học kỳ I"
+                }
+            }
+        },
+        "merged_cell_handling": {
+            "enabled": true,
+            "forward_fill": true,
+            "combine_with_subheader": true,
+            "cache_merged_info": true
+        },
+        "performance": {
+            "enable_caching": true,
+            "cache_max_files": 3,
+            "cache_search_results": true,
+            "cache_stats": true
+        }
+    }
 }

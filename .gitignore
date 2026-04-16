@@ -22,3 +22,11 @@ dist/Student Score Import v1.3.9.exe
 build
 dist
 .github/copilot-instructions.md
+QUICK_START.md
+IMPLEMENTATION_SUMMARY.md
+TESTING.md
+.vs
+__pycache__
+.pytest_cache
+*.spec
+hooks

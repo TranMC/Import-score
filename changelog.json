@@ -1,4 +1,13 @@
-{   
+{
+    "3.1-release": [
+        "Sửa lỗi giao diện sơ bộ và điều chỉnh một số layout trên màn hình chính",
+        "Cải thiện trải nghiệm người dùng: thông báo toast rõ ràng hơn và ổn định",
+        "Thêm tính năng đánh màu theo thang điểm (hỗ trợ tùy chỉnh ngưỡng)",
+        "Tối ưu hiệu năng khi tải danh sách và xử lý file lớn",
+        "Tối ưu lại giao diện của ứng dụng bằng CustomTkinter",
+        "Fix lỗi duplicate liên tục khi dùng file gần đây",
+        "Nâng cấp xuất báo cáo pdf"
+    ],
     "3.0-release": [
         "Sửa lỗi giao diện sơ bộ và điều chỉnh một số layout trên màn hình chính",
         "Cải thiện trải nghiệm người dùng: thông báo toast rõ ràng hơn và ổn định",
@@ -8,34 +17,33 @@
     "2.9.5-alpha": [
         "Phiên bản thử nghiệm nội bộ, không có thay đổi gì đáng kể"
     ],
-
     "2.8.5-alpha": [
         "Cập nhật thư viện bên trong",
         "Sửa lỗi nhỏ về giao diện người dùng"
     ],
-    "2.7.5-alpha":[
+    "2.7.5-alpha": [
         "Tối ưu hoá lại code thừa"
     ],
-    "2.7.0-pre":[
+    "2.7.0-pre": [
         "Thêm tính năng chọn kênh cập nhật"
     ],
-    "2.6.0":[
+    "2.6.0": [
         "Xóa hoàn toàn tất cả tính năng liên quan đến memory",
         "Đơn giản hóa mã nguồn",
         "Giảm kích thước và độ phức tạp của ứng dụng"
     ],
-    "2.5.0":[
+    "2.5.0": [
         "Loại bỏ phụ thuộc vào psutil",
         "Tối ưu hóa việc theo dõi bộ nhớ",
         "Giảm kích thước ứng dụng"
     ],
-    "2.4.0":[
+    "2.4.0": [
         "Vứt tính năng memory fix đi"
-    ],    
-    "2.3.9.2-pre-release-2":[
+    ],
+    "2.3.9.2-pre-release-2": [
         "Minor change"
     ],
-    "2.3.9":[
+    "2.3.9": [
         "Quality fix: nâng cấp tốc độ tải xuống"
     ],
     "2.3.8.1": [
@@ -45,27 +53,26 @@
         "Sửa lại file build",
         "Nothing changed"
     ],
-    "2.3.7":
-    [
+    "2.3.7": [
         "Sửa lại file lỗi báo lỗi cột không tồn tại trong file Excel",
         "Sửa lại file changelog"
     ],
-    "2.3.6":[
+    "2.3.6": [
         "Sửa lại tính năng tự động kiểm tra cập nhật khi khởi động ứng dụng"
     ],
-    "2.3.5":[
+    "2.3.5": [
         "Thêm tính năng tự động kiểm tra cập nhật khi khởi động ứng dụng",
         "Cải thiện giao diện người dùng",
         "Sửa lỗi không hiển thị mã đề trong một số trường hợp",
         "Khắc phục lỗi không tìm thấy mã đề trong file Excel"
     ],
-    "2.3.2":[
+    "2.3.2": [
         "Small update để fix app run bởi github runner"
-],
-    "2.3.1":[
+    ],
+    "2.3.1": [
         "Thêm thanh progress bar khi download file update",
         "Thêm tiến trình tạo pdf"
-],
+    ],
     "2.2.4": [
         "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng không hoạt động",
         "Cải thiện độ tương phản của giao diện trong chế độ tối",
@@ -205,4 +212,4 @@
         "Sửa lỗi hiển thị thành phần nhập điểm và mã đề",
         "Khắc phục lỗi chức năng chuyển đổi chế độ tối/sáng"
     ]
-} 
+}

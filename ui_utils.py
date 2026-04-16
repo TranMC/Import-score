@@ -70,8 +70,8 @@ def apply_styles(config, style, root):
     style.configure('TLabelframe', 
                    background=theme['card'],
                    bordercolor=theme['border'],
-                   relief='solid',
-                   borderwidth=1)
+                   relief='flat',
+                   borderwidth=2)
     
     style.configure('TLabelframe.Label', 
                    font=heading_font,
@@ -137,17 +137,19 @@ def apply_styles(config, style, root):
                    relief='flat')
     
     # ===== MODERN ENTRY STYLES =====
+    # ===== MODERN ENTRY STYLES =====
     style.configure('TEntry', 
                    font=default_font,
                    fieldbackground=theme['card'],
                    foreground=theme['text'],
                    bordercolor=theme['border'],
-                   lightcolor=theme['primary'],
-                   darkcolor=theme['primary'],
-                   borderwidth=2,
-                   relief='solid',
-                   padding=8)
+                   lightcolor=theme['card'],
+                   darkcolor=theme['card'],
+                   borderwidth=1,
+                   relief='flat',
+                   padding=(12, 10))
     
+    # Giảm tương phản độ sâu khi focus để không chói, con trỏ sẽ dễ thấy ở theme['card']
     style.map('TEntry',
              fieldbackground=[('focus', theme['card'])],
              bordercolor=[('focus', theme['primary']), ('!focus', theme['border'])],
@@ -160,10 +162,10 @@ def apply_styles(config, style, root):
                    fieldbackground=theme['card'],
                    foreground=theme['text'],
                    bordercolor=theme['border'],
-                   arrowcolor=theme['primary'],
-                   borderwidth=2,
-                   relief='solid',
-                   padding=8)
+                   arrowcolor=theme['text_secondary'],
+                   borderwidth=1,
+                   relief='flat',
+                   padding=(12, 10))
     
     style.map('TCombobox',
              fieldbackground=[('readonly', theme['card']), 
@@ -174,9 +176,15 @@ def apply_styles(config, style, root):
              bordercolor=[('focus', theme['primary']), ('!focus', theme['border'])],
              arrowcolor=[('disabled', theme['disabled']), ('!disabled', theme['primary'])])
     
-    # Combobox dropdown styling
+    # Combobox dropdown styling và Cursor styling
     if root:
         try:
+            # Sửa màu con trỏ (cursor) để tương phản tốt với nền chữ
+            insert_color = 'white' if dark_mode else 'black'
+            root.option_add('*TEntry*insertBackground', insert_color)
+            root.option_add('*Entry*insertBackground', insert_color)
+            root.option_add('*TCombobox*insertBackground', insert_color)
+            
             root.option_add('*TCombobox*Listbox.background', theme['card'])
             root.option_add('*TCombobox*Listbox.foreground', theme['text'])
             root.option_add('*TCombobox*Listbox.selectBackground', theme['primary'])
@@ -191,12 +199,12 @@ def apply_styles(config, style, root):
     
     # ===== MODERN TREEVIEW STYLES =====
     # Font lớn hơn cho Treeview
-    treeview_font = (font_family, font_sizes['normal'] + 1)  # Tăng 1pt
+    treeview_font = (font_family, font_sizes['normal'] + 1)
     treeview_heading_font = (font_family, font_sizes['heading'], 'bold')
     
     style.configure('Treeview', 
                    font=treeview_font,
-                   rowheight=40,  # Tăng từ 35 lên 40
+                   rowheight=45,  # Tăng lên 45 cho không gian thoáng hơn
                    background=theme['treeview_bg'],
                    fieldbackground=theme['treeview_bg'],
                    foreground=theme['text'],
@@ -209,7 +217,7 @@ def apply_styles(config, style, root):
                    foreground='white',
                    borderwidth=0,
                    relief='flat',
-                   padding=12)  # Tăng padding
+                   padding=(15, 12))  # Tăng padding
     
     style.map('Treeview',
              background=[('selected', theme['treeview_selected'])],
@@ -570,8 +578,8 @@ def create_dark_mode_switch(parent, config, style, root, save_config):
         new_bg = 'white' if is_now_dark else '#2D3748'
         new_fg = '#2D3748' if is_now_dark else 'white'
         
-        switch.config(text=new_text, bg=new_bg, fg=new_fg)
-        switch_frame.config(bg=config['ui']['theme']['primary'])
+        switch.configure(text=new_text, bg=new_bg, fg=new_fg)
+        switch_frame.configure(bg=config['ui']['theme']['primary'])
         
         # Lưu cấu hình
         save_config()
@@ -579,7 +587,7 @@ def create_dark_mode_switch(parent, config, style, root, save_config):
         # Force update toàn bộ giao diện
         root.update()
     
-    switch.config(command=toggle_theme)
+    switch.configure(command=toggle_theme)
     switch.pack(side="right")
     
     return switch_frame

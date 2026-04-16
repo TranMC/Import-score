@@ -1,4 +1,5 @@
 import tkinter as tk
+import customtkinter as ctk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import pandas as pd
 from pandas import CategoricalDtype
@@ -18,11 +19,198 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import threading
 import requests
+import re
+from collections import OrderedDict
+from openpyxl import load_workbook
 
 # Import các module mới
 import version_utils
 import themes
 import ui_utils
+
+# ========================================
+# CACHING LAYER
+# ========================================
+
+class ConfigCache:
+    """Cache cho config file để tránh đọc file liên tục"""
+    _cache = None
+    _last_modified = None
+    
+    @classmethod
+    def get_config(cls, config_path):
+        """Lấy config từ cache hoặc đọc file nếu có thay đổi"""
+        try:
+            if not os.path.exists(config_path):
+                return None
+                
+            current_mtime = os.path.getmtime(config_path)
+            
+            if cls._cache is None or cls._last_modified != current_mtime:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    cls._cache = json.load(f)
+                cls._last_modified = current_mtime
+            
+            return cls._cache
+        except Exception as e:
+            print(f"Error getting config from cache: {e}")
+            return None
+    
+    @classmethod
+    def invalidate(cls):
+        """Xóa cache"""
+        cls._cache = None
+        cls._last_modified = None
+
+
+class DataFrameCache:
+    """Cache cho DataFrame từ Excel files"""
+    def __init__(self, max_size=3):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+    
+    def _get_file_key(self, file_path):
+        """Tạo key duy nhất cho file dựa trên path và modification time"""
+        try:
+            if not os.path.exists(file_path):
+                return None
+            mtime = os.path.getmtime(file_path)
+            return f"{file_path}_{mtime}"
+        except:
+            return None
+    
+    def get(self, file_path):
+        """Lấy DataFrame từ cache"""
+        key = self._get_file_key(file_path)
+        if key and key in self.cache:
+            # Di chuyển key lên đầu (most recently used)
+            self.cache.move_to_end(key)
+            return self.cache[key].copy()
+        return None
+    
+    def set(self, file_path, df):
+        """Lưu DataFrame vào cache"""
+        key = self._get_file_key(file_path)
+        if key is None:
+            return
+        
+        # Xóa file cũ nếu vượt quá max_size
+        if len(self.cache) >= self.max_size:
+            self.cache.popitem(last=False)  # Xóa oldest
+        
+        self.cache[key] = df.copy()
+    
+    def clear(self):
+        """Xóa toàn bộ cache"""
+        self.cache.clear()
+
+
+class SearchCache:
+    """Cache cho kết quả search"""
+    def __init__(self):
+        self.cache = {}
+        self.df_hash = None
+    
+    def _get_df_hash(self, df):
+        """Tạo hash cho DataFrame để detect thay đổi"""
+        try:
+            return hash(f"{len(df)}_{df.shape[1]}_{df.iloc[0].sum() if len(df) > 0 else 0}")
+        except:
+            return None
+    
+    def clear_if_data_changed(self, df):
+        """Xóa cache nếu DataFrame thay đổi"""
+        current_hash = self._get_df_hash(df)
+        if current_hash != self.df_hash:
+            self.cache.clear()
+            self.df_hash = current_hash
+    
+    def get(self, query):
+        """Lấy kết quả search từ cache"""
+        return self.cache.get(query.lower())
+    
+    def set(self, query, results):
+        """Lưu kết quả search vào cache"""
+        self.cache[query.lower()] = results
+    
+    def clear(self):
+        """Xóa toàn bộ cache"""
+        self.cache.clear()
+        self.df_hash = None
+
+
+class StatsCache:
+    """Cache cho statistics calculations"""
+    def __init__(self):
+        self.stats = None
+        self.df_version = None
+    
+    def _get_df_version(self, df):
+        """Tạo version identifier cho DataFrame"""
+        try:
+            if df is None or len(df) == 0:
+                return "empty"
+            return f"{len(df)}_{df.shape[1]}_{df.iloc[0].sum() if len(df) > 0 else 0}"
+        except:
+            return None
+    
+    def get_stats(self, df, force_recalc=False):
+        """Lấy stats từ cache hoặc tính lại nếu cần"""
+        current_version = self._get_df_version(df)
+        
+        if force_recalc or self.stats is None or self.df_version != current_version:
+            self.stats = self._calculate_stats(df)
+            self.df_version = current_version
+        
+        return self.stats
+    
+    def _calculate_stats(self, df):
+        """Tính toán statistics"""
+        try:
+            if df is None or len(df) == 0:
+                return {
+                    'total': 0,
+                    'scored': 0,
+                    'mean': 0,
+                    'max': 0,
+                    'min': 0
+                }
+            
+            score_col = None
+            for col in ['Điểm', 'score', 'Score']:
+                if col in df.columns:
+                    score_col = col
+                    break
+            
+            if score_col is None:
+                return {'total': len(df), 'scored': 0, 'mean': 0, 'max': 0, 'min': 0}
+            
+            scores = df[score_col].dropna()
+            return {
+                'total': len(df),
+                'scored': len(scores),
+                'mean': float(scores.mean()) if len(scores) > 0 else 0,
+                'max': float(scores.max()) if len(scores) > 0 else 0,
+                'min': float(scores.min()) if len(scores) > 0 else 0
+            }
+        except Exception as e:
+            print(f"Error calculating stats: {e}")
+            return {'total': 0, 'scored': 0, 'mean': 0, 'max': 0, 'min': 0}
+    
+    def clear(self):
+        """Xóa cache"""
+        self.stats = None
+        self.df_version = None
+
+
+# Khởi tạo global cache instances
+_df_cache = DataFrameCache(max_size=3)
+_search_cache = SearchCache()
+_stats_cache = StatsCache()
+
+# ========================================
+# END CACHING LAYER
+# ========================================
 
 # Tạo class ToolTip để hiển thị gợi ý khi di chuột qua các nút
 class ToolTip:
@@ -44,12 +232,12 @@ class ToolTip:
             self.tooltip = None
         
         # Tạo cửa sổ toplevel
-        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip = ctk.CTkToplevel(self.widget)
         self.tooltip.wm_overrideredirect(True)
         self.tooltip.wm_geometry(f"+{x}+{y}")
         
-        label = ttk.Label(self.tooltip, text=self.text, 
-                         background="#ffffe0", relief="solid", borderwidth=1,
+        label = ctk.CTkLabel(self.tooltip, text=self.text, 
+                         fg_color="#ffffe0", text_color="black",
                          font=("Segoe UI", 9, "normal"))
         label.pack(ipadx=5, ipady=2)
         
@@ -136,24 +324,11 @@ class UndoManager:
 
 # Toast Notification System
 class ToastNotification:
-    """Hệ thống thông báo toast hiện đại"""
+    """Hệ thống thông báo toast hiện đại bằng CustomTkinter Frame"""
     active_toasts = []
     
     @staticmethod
     def show(message, toast_type="info", duration=3000):
-        """
-        Hiển thị toast notification
-        
-        Args:
-            message (str): Nội dung thông báo
-            toast_type (str): Loại thông báo: 'success', 'error', 'warning', 'info'
-            duration (int): Thời gian hiển thị (ms), 0 = không tự động đóng
-        """
-        # Tạo cửa sổ toast
-        toast = tk.Toplevel(root)
-        toast.wm_overrideredirect(True)
-        toast.attributes('-topmost', True)
-        
         # Màu sắc theo loại
         colors = {
             'success': {'bg': '#10B981', 'fg': 'white', 'icon': '✓'},
@@ -164,95 +339,56 @@ class ToastNotification:
         
         style_config = colors.get(toast_type, colors['info'])
         
-        # Frame chính với padding
-        main_frame = tk.Frame(toast, bg=style_config['bg'], padx=20, pady=12)
-        main_frame.pack(fill='both', expand=True)
+        # Tạo toast sử dụng frame đặt trực tiếp lên root
+        toast_frame = ctk.CTkFrame(root, fg_color=style_config['bg'], corner_radius=8)
         
-        # Icon + Message
-        content_frame = tk.Frame(main_frame, bg=style_config['bg'])
-        content_frame.pack(fill='both', expand=True)
-        
-        tk.Label(content_frame, 
+        # Icon
+        ctk.CTkLabel(toast_frame, 
                 text=style_config['icon'], 
                 font=('Segoe UI', 16),
-                bg=style_config['bg'],
-                fg=style_config['fg']).pack(side='left', padx=(0, 10))
+                text_color=style_config['fg']).pack(side='left', padx=(12, 8), pady=10)
         
-        tk.Label(content_frame, 
+        # Message
+        ctk.CTkLabel(toast_frame, 
                 text=message,
-                font=('Segoe UI', 10, 'bold'),
-                bg=style_config['bg'],
-                fg=style_config['fg'],
-                wraplength=300,
-                justify='left').pack(side='left', fill='both', expand=True)
+                font=('Segoe UI', 12, 'bold'),
+                text_color=style_config['fg'],
+                wraplength=250).pack(side='left', fill='both', expand=True, padx=(0, 15), pady=10)
         
-        # Tính toán vị trí (góc phải dưới màn hình)
-        toast.update_idletasks()
-        toast_width = toast.winfo_width()
-        toast_height = toast.winfo_height()
-        
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-        
-        # Cleanup các toast đã bị destroyed
+        # Lọc các toast còn tồn tại
         ToastNotification.active_toasts = [t for t in ToastNotification.active_toasts if t.winfo_exists()]
         
-        # Stack toasts từ dưới lên
-        y_offset = 0
-        for t in ToastNotification.active_toasts:
-            try:
-                if t.winfo_exists():
-                    y_offset += t.winfo_height() + 10
-            except:
-                pass
+        # Tính toán Y offset
+        base_y = 20
+        offset_y = len(ToastNotification.active_toasts) * 60
+        y_pos = base_y + offset_y
         
-        x = screen_width - toast_width - 20
-        y = screen_height - toast_height - 60 - y_offset
-        
-        toast.geometry(f"+{x}+{y}")
+        # Đặt frame ở góc dưới bên phải
+        toast_frame.place(relx=1.0, rely=1.0, anchor="se", x=-20, y=-y_pos)
         
         # Thêm vào danh sách active
-        ToastNotification.active_toasts.append(toast)
+        ToastNotification.active_toasts.append(toast_frame)
         
-        # Animation fade in
-        toast.attributes('-alpha', 0.0)
-        for i in range(1, 11):
-            toast.attributes('-alpha', i / 10)
-            toast.update()
-            root.after(20)
-        
-        def close_toast():
-            # Xóa khỏi danh sách trước
-            if toast in ToastNotification.active_toasts:
-                ToastNotification.active_toasts.remove(toast)
+        def close_toast(event=None):
+            if toast_frame in ToastNotification.active_toasts:
+                ToastNotification.active_toasts.remove(toast_frame)
+            if toast_frame.winfo_exists():
+                toast_frame.destroy()
             
-            # Animation fade out
-            try:
-                for i in range(10, 0, -1):
-                    if toast.winfo_exists():
-                        toast.attributes('-alpha', i / 10)
-                        toast.update()
-                        root.after(20)
-                    else:
-                        break
-            except:
-                pass
-            
-            # Destroy toast
-            try:
-                if toast.winfo_exists():
-                    toast.destroy()
-            except:
-                pass
-        
+            # Reposition remaining toasts
+            for idx, t in enumerate([x for x in ToastNotification.active_toasts if x.winfo_exists()]):
+                t.place_configure(y=-(20 + idx * 60))
+                
         # Tự động đóng sau duration nếu > 0
         if duration > 0:
-            toast.after(duration, close_toast)
-        
+            root.after(duration, close_toast)
+            
         # Click để đóng sớm
-        toast.bind('<Button-1>', lambda e: close_toast())
-        
-        return toast
+        toast_frame.bind('<Button-1>', close_toast)
+        for child in toast_frame.winfo_children():
+            child.bind('<Button-1>', close_toast)
+            
+        return toast_frame
 
 def get_config_path():
     """Lấy đường dẫn đến file config trong thư mục AppData của Windows"""
@@ -423,6 +559,9 @@ def load_config():
         }
 
 config = load_config()
+config['ui']['dark_mode'] = True
+# Áp dụng theme tối trực tiếp vào config
+config = themes.apply_theme_to_config(config, True)
 
 def save_config():
     """Lưu cấu hình ra file JSON trong AppData"""
@@ -495,6 +634,7 @@ def decrypt_data(encrypted_data, password, salt):
 
 # Biến toàn cục
 root = tk.Tk()
+ctk.set_appearance_mode("Dark")
 root.title("Quản lí điểm học sinh")
 df = None
 file_path = None
@@ -505,7 +645,7 @@ search_index = None    # Thêm biến để lưu search index
 last_activity_time = None  # Thêm biến để theo dõi thời gian hoạt động cuối cùng
 lock_window = None  # Thêm biến để theo dõi cửa sổ khóa
 lock_time = None  # Thêm biến để theo dõi thời gian khóa
-
+current_filter_type = 'all'  # Lọc mặc định là tất cả
 
 
 def ensure_proper_dtypes(df_input):
@@ -518,9 +658,19 @@ def ensure_proper_dtypes(df_input):
         
     df_copy = df_input.copy()
     
-    # Xử lý cột Điểm
+    # Xử lý tất cả các cột điểm số (tìm theo pattern)
+    score_patterns = ['điểm', 'đđg', 'đtb', 'score', 'point']
+    for col in df_copy.columns:
+        col_lower = str(col).lower()
+        if any(pattern in col_lower for pattern in score_patterns):
+            # Chuyển đổi sang dạng số
+            try:
+                df_copy[col] = pd.to_numeric(df_copy[col], errors='coerce')
+            except Exception as e:
+                print(f"Lỗi khi chuyển đổi cột {col}: {str(e)}")
+    
+    # Xử lý cột Điểm (legacy support)
     if 'Điểm' in df_copy.columns:
-        # Chuyển đổi tất cả các giá trị sang dạng số, thay thế giá trị không hợp lệ bằng NaN
         try:
             df_copy['Điểm'] = pd.to_numeric(df_copy['Điểm'], errors='coerce')
         except Exception as e:
@@ -699,68 +849,98 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
     Args:
         file_path (str): Đường dẫn tới file Excel
         chunk_size (int): Kích thước mỗi chunk khi đọc dữ liệu
-        header_row (int): Dòng chứa tiêu đề, None nếu dòng đầu tiên
+        header_row (int): Dòng chứa tiêu đề, None nếu cần tự động tìm
         
     Returns:
         pd.DataFrame: DataFrame hoàn chỉnh sau khi đọc
     """
     from pandas.io.excel._openpyxl import OpenpyxlReader
+    global _df_cache
     
     # Trạng thái tiến trình
-    status_label.config(text=f"Đang lập kế hoạch đọc file lớn: {os.path.basename(file_path)}...", 
+    status_label.configure(text=f"Đang lập kế hoạch đọc file lớn: {os.path.basename(file_path)}...", 
 )
     root.update()
     
     try:
+        # Check cache
+        config = load_config()
+        enable_caching = config.get('excel_reading', {}).get('performance', {}).get('enable_caching', True)
+        
+        if enable_caching:
+            cached_df = _df_cache.get(file_path)
+            if cached_df is not None:
+                status_label.configure(text=f"Đã load file từ cache")
+                return cached_df
+        
         # Đọc thông tin file để tìm hiểu số dòng
         excel_reader = pd.ExcelFile(file_path, engine='openpyxl')
         sheet_name = excel_reader.sheet_names[0]  # Lấy sheet đầu tiên
         
         # Chỉ đọc header để phân tích
         if header_row is None:
-            # Đọc 20 dòng đầu tiên để phân tích header
-            header_sample = pd.read_excel(excel_reader, sheet_name=sheet_name, nrows=20)
+            # Đọc nhiều dòng hơn để phân tích header
+            max_rows = config.get('excel_reading', {}).get('header_detection', {}).get('max_search_rows', 50)
+            header_sample = pd.read_excel(excel_reader, sheet_name=sheet_name, nrows=max_rows)
             
-            # Tìm hàng chứa header
-            header_row = 0
-            for i in range(len(header_sample)):
-                row_values = header_sample.iloc[i].astype(str)
-                if any(name.lower() in ' '.join(row_values.str.lower()) 
-                      for name in ['họ và tên', 'tên học sinh', 'học sinh']):
-                    header_row = i
-                    break
+            # Tìm hàng chứa header với scoring
+            header_row = find_header_row(header_sample, config)
         
         # Cập nhật trạng thái
-        status_label.config(text=f"Đang đọc dữ liệu theo chunk từ dòng {header_row+1}...", 
+        status_label.configure(text=f"Đang đọc dữ liệu theo chunk từ dòng {header_row+1}...", 
 )
         root.update()
         
+        # Check multi-level headers
+        multi_level = config.get('excel_reading', {}).get('header_detection', {}).get('multi_level_support', True)
+        header_rows_list = None
+        
+        if multi_level and header_row < max_rows - 1:
+            # Có thể có multi-level, đọc thêm vài dòng
+            header_rows_to_read = min(3, max_rows - header_row)
+            if header_rows_to_read > 1:
+                header_rows_list = list(range(header_row, header_row + header_rows_to_read))
+        
         # Đọc dữ liệu theo từng chunk
         chunks = []
-        reader = pd.read_excel(
-            excel_reader, 
-            sheet_name=sheet_name,
-            header=header_row,
-            chunksize=chunk_size
-        )
+        if header_rows_list:
+            reader = pd.read_excel(
+                excel_reader, 
+                sheet_name=sheet_name,
+                header=header_rows_list,
+                chunksize=chunk_size
+            )
+        else:
+            reader = pd.read_excel(
+                excel_reader, 
+                sheet_name=sheet_name,
+                header=header_row,
+                chunksize=chunk_size
+            )
         
         total_rows = 0
         
         for i, chunk in enumerate(reader):
+            # Flatten MultiIndex columns nếu có
+            if isinstance(chunk.columns, pd.MultiIndex):
+                separator = config.get('excel_reading', {}).get('header_detection', {}).get('merge_separator', '_')
+                chunk.columns = [separator.join(str(i) for i in col if str(i) != 'nan').strip(separator) 
+                                for col in chunk.columns.values]
+            
             chunks.append(chunk)
             
             total_rows += len(chunk)
-            status_label.config(text=f"Đang đọc dữ liệu: {total_rows} dòng...", 
+            status_label.configure(text=f"Đang đọc dữ liệu: {total_rows} dòng...", 
 )
             root.update()
             
             # Nếu đã đọc quá nhiều, hiển thị cảnh báo
             if total_rows > 10000:
-                status_label.config(text=f"File lớn: đã đọc {total_rows} dòng...", 
+                status_label.configure(text=f"File lớn: đã đọc {total_rows} dòng...", 
 )            # Ghép các chunk lại
         
         if chunks:
-            status_label.config(text=f"Đang ghép {len(chunks)} chunk dữ liệu...", 
+            status_label.configure(text=f"Đang ghép {len(chunks)} chunk dữ liệu...", 
 )
             root.update()
         
@@ -768,15 +948,19 @@ def load_excel_lazily(file_path, chunk_size=1000, header_row=None):
         
             # Đảm bảo kiểu dữ liệu phù hợp cho các cột quan trọng
             result = ensure_proper_dtypes(result)
+            
+            # Cache result
+            if enable_caching:
+                _df_cache.set(file_path, result)
         
-            status_label.config(text=f"Đã đọc xong {total_rows} dòng dữ liệu", 
+            status_label.configure(text=f"Đã đọc xong {total_rows} dòng dữ liệu", 
 )
             return result
         else:
             return pd.DataFrame()
             
     except Exception as e:
-        status_label.config(text=f"Lỗi khi đọc file: {str(e)}", 
+        status_label.configure(text=f"Lỗi khi đọc file: {str(e)}", 
 )
         ToastNotification.show(
             f"❌ Không thể đọc file Excel\n"
@@ -825,7 +1009,7 @@ def open_recent_file(filepath):
         return
     
     file_path = filepath
-    status_label.config(text=f"Đang đọc file: {os.path.basename(file_path)}...")
+    status_label.configure(text=f"Đang đọc file: {os.path.basename(file_path)}...")
     root.update()
     
     try:
@@ -833,7 +1017,7 @@ def open_recent_file(filepath):
         
         if df is not None and not df.empty:
             total_students = len(df)
-            status_label.config(text=f"Đã đọc xong: {os.path.basename(file_path)} ({total_students} học sinh)")
+            status_label.configure(text=f"Đã đọc xong: {os.path.basename(file_path)} ({total_students} học sinh)")
             
             df = ensure_required_columns(df)
             refresh_ui()
@@ -843,68 +1027,103 @@ def open_recent_file(filepath):
             
             ToastNotification.show(f"Đã mở file {os.path.basename(file_path)}", "success")
         else:
-            status_label.config(text="Không có dữ liệu để hiển thị")
+            status_label.configure(text="Không có dữ liệu để hiển thị")
     except Exception as e:
         error_message = str(e)
-        status_label.config(text=f"Lỗi: {error_message[:50]}")
+        status_label.configure(text=f"Lỗi: {error_message[:50]}")
         ToastNotification.show(f"Lỗi khi đọc file: {error_message[:100]}", "error")
         traceback.print_exc()
 
+file_menu_widget = None
+
 def update_recent_files_menu():
-    """Cập nhật menu Recent Files"""
-    # Tìm menu File hoặc tạo mới
+    """Cập nhật menu Recent Files một cách ổn định, tránh lặp lại"""
+    global file_menu_widget
     try:
-        # Xóa menu cũ nếu tồn tại
-        menubar = root.nametowidget(root.cget('menu'))
+        # Lấy menubar chính
+        menu_ptr = root.cget('menu')
+        if not menu_ptr:
+            return
+        menubar = root.nametowidget(menu_ptr)
         
-        # Tìm hoặc tạo menu File
-        file_menu = None
-        for i in range(menubar.index('end') + 1 if menubar.index('end') is not None else 0):
+        # 1. Kiểm tra cache toàn cục
+        if file_menu_widget is not None:
             try:
-                label = menubar.entrycget(i, 'label')
-                if 'File' in label or 'Tệp' in label:
-                    file_menu = menubar.nametowidget(menubar.entrycget(i, 'menu'))
-                    break
+                if not file_menu_widget.winfo_exists():
+                    file_menu_widget = None
+            except:
+                file_menu_widget = None
+        
+        # 2. Nếu chưa có trong cache, tìm trong menubar
+        file_menu = file_menu_widget
+        if file_menu is None:
+            try:
+                last_idx = menubar.index('end')
+                if last_idx is not None:
+                    for i in range(last_idx + 1):
+                        try:
+                            label = str(menubar.entrycget(i, 'label'))
+                            # Tìm label có chứa "File" hoặc "Tệp" (không quan tâm emoji)
+                            if "File" in label or "Tệp" in label:
+                                menu_name = menubar.entrycget(i, 'menu')
+                                if menu_name:
+                                    file_menu = menubar.nametowidget(menu_name)
+                                    file_menu_widget = file_menu
+                                    break
+                        except:
+                            continue
             except:
                 pass
         
-        # Nếu chưa có, tạo menu File mới
+        # 3. Nếu vẫn không thấy, tạo mới ở vị trí đầu tiên
         if file_menu is None:
-            file_menu = tk.Menu(menubar, tearoff=0,
-                              background=config['ui']['theme']['card'],
-                              foreground=config['ui']['theme']['text'],
-                              activebackground=config['ui']['theme']['primary'],
-                              activeforeground='white')
+            file_menu = tk.Menu(menubar, tearoff=0)
             menubar.insert_cascade(0, label="📁 File", menu=file_menu)
+            file_menu_widget = file_menu
         
-        # Xóa các mục recent files cũ
-        try:
-            last_index = file_menu.index('end')
-            if last_index is not None:
-                for i in range(last_index, -1, -1):
-                    try:
-                        label = file_menu.entrycget(i, 'label')
-                        if 'Recent' in label or any(ext in label for ext in ['.xlsx', '.xls']):
-                            file_menu.delete(i)
-                    except:
-                        pass
-        except:
-            pass
+        # XOÁ TOÀN BỘ để xây dựng lại từ đầu, tránh bị chồng chất separator/items
+        file_menu.delete(0, 'end')
         
-        # Thêm separator và recent files mới
-        if config.get('recent_files'):
+        # 1. Các lệnh cơ bản
+        file_menu.add_command(label="📂 Mở file Excel...", accelerator="Ctrl+O", 
+                             command=select_file)
+        file_menu.add_command(label="💾 Lưu file (Excel)", accelerator="Ctrl+S", 
+                             command=lambda: save_excel() if df is not None else None)
+        file_menu.add_command(label="📑 Xuất báo cáo (PDF)", 
+                             command=generate_report)
+        
+        # 2. Danh sách file gần đây
+        recent_files = config.get('recent_files', [])
+        if recent_files:
             file_menu.add_separator()
             file_menu.add_command(label="📌 File Gần Đây", state='disabled')
             
-            for i, filepath in enumerate(config['recent_files'][:5]):
-                if os.path.exists(filepath):
-                    filename = os.path.basename(filepath)
-                    file_menu.add_command(
-                        label=f"  {i+1}. {filename}",
-                        command=lambda fp=filepath: open_recent_file(fp)
-                    )
+            # Chỉ lấy các file thực sự tồn tại
+            valid_recent = []
+            for fp in recent_files:
+                if os.path.exists(fp):
+                    valid_recent.append(fp)
+            
+            # Cập nhật lại config nếu có file không tồn tại
+            if len(valid_recent) != len(recent_files):
+                config['recent_files'] = valid_recent
+                # Tránh gọi save_config() ở đây để không tạo vòng lặp, 
+                # chỉ cập nhật biến cục bộ hoặc lưu im lặng
+                
+            for i, filepath in enumerate(valid_recent[:5]):
+                filename = os.path.basename(filepath)
+                file_menu.add_command(
+                    label=f"  {i+1}. {filename}",
+                    command=lambda fp=filepath: open_recent_file(fp)
+                )
+        
+        # Thêm phím thoát
+        file_menu.add_separator()
+        file_menu.add_command(label="❌ Thoát", command=on_closing)
+        
     except Exception as e:
         print(f"Lỗi khi cập nhật recent files menu: {str(e)}")
+        traceback.print_exc()
 
 def select_file():
     global df, file_path
@@ -913,7 +1132,7 @@ def select_file():
     )
     if file_path:
         # Hiển thị thông báo trạng thái khi bắt đầu đọc file
-        status_label.config(text=f"Đang đọc file: {os.path.basename(file_path)}...", 
+        status_label.configure(text=f"Đang đọc file: {os.path.basename(file_path)}...", 
 )
         root.update()  # Cập nhật giao diện ngay lập tức để hiển thị trạng thái
         
@@ -924,7 +1143,7 @@ def select_file():
             if df is not None and not df.empty:
                 # Hiển thị số lượng học sinh
                 total_students = len(df)
-                status_label.config(
+                status_label.configure(
                     text=f"Đã đọc xong: {os.path.basename(file_path)} ({total_students} học sinh)",
 
                 )
@@ -944,14 +1163,14 @@ def select_file():
                 
                 ToastNotification.show(f"Đã mở file {os.path.basename(file_path)}", "success")
             else:
-                status_label.config(
+                status_label.configure(
                     text="Không có dữ liệu để hiển thị, vui lòng tải file Excel có dữ liệu",
 
                 )
                 
         except Exception as e:
             error_message = str(e)
-            status_label.config(
+            status_label.configure(
                 text=f"Lỗi: {error_message[:50] + '...' if len(error_message) > 50 else error_message}",
 
             )
@@ -960,7 +1179,7 @@ def select_file():
 
 def read_excel_normally(file_path):
     """Đọc file Excel theo cách thông thường"""
-    status_label.config(text=f"Đang đọc file Excel...")
+    status_label.configure(text=f"Đang đọc file Excel...")
     root.update()
     
     try:
@@ -1014,41 +1233,102 @@ def save_excel():
         update_score_extremes()
 
 def find_matching_column(df, target_name):
-    """Find column that best matches the target name"""
-    target_name = target_name.lower()
+    """Find column that best matches the target name using config patterns"""
+    target_name_lower = target_name.lower().strip()
     
     # Direct match first (case insensitive)
     for col in df.columns:
-        if col.lower() == target_name:
+        if str(col).lower().strip() == target_name_lower:
             return col
+    
+    # Try using new pattern matching system
+    try:
+        config = load_config()
+        patterns_config = config.get('excel_reading', {}).get('column_patterns', {})
+        
+        # Check if target_name matches any known field
+        for col in df.columns:
+            col_str = str(col).strip()
             
-    # Common variations
+            # Try matching with student_info patterns
+            for field_name, field_config in patterns_config.get('student_info', {}).items():
+                patterns = field_config.get('patterns', [])
+                for pattern in patterns:
+                    if pattern.lower() == target_name_lower:
+                        # This is the field we're looking for
+                        # Check if col matches this field
+                        for col_pattern in patterns:
+                            if col_pattern.lower() in col_str.lower() or col_str.lower() in col_pattern.lower():
+                                return col
+                        # Try regex
+                        regex = field_config.get('regex', '')
+                        if regex:
+                            try:
+                                if re.match(regex, col_str, re.IGNORECASE):
+                                    return col
+                            except:
+                                pass
+            
+            # Try matching with score_columns patterns
+            for score_type, score_config in patterns_config.get('score_columns', {}).items():
+                patterns = score_config.get('patterns', [])
+                for pattern in patterns:
+                    if pattern.lower() == target_name_lower:
+                        # This is the field we're looking for
+                        # Check if col matches this field
+                        for col_pattern in patterns:
+                            if col_pattern.lower() in col_str.lower() or col_str.lower() in col_pattern.lower():
+                                return col
+                        # Try regex
+                        regex = score_config.get('regex', '')
+                        if regex:
+                            try:
+                                if re.match(regex, col_str, re.IGNORECASE):
+                                    return col
+                            except:
+                                pass
+    except Exception as e:
+        print(f"Error using pattern matching: {e}")
+    
+    # Fallback to old variations
     name_variations = {
         'tên học sinh': ['họ và tên', 'họ tên', 'tên', 'học sinh'],
-        'mã đề': ['mã', 'đề', 'số đề', 'mã số đề'],
-        'điểm': ['điểm số', 'số điểm', 'point', 'score']
+        'họ và tên': ['họ và tên', 'họ tên', 'tên', 'học sinh', 'tên học sinh'],
+        'mã đề': ['mã', 'đề', 'số đề', 'mã số đề', 'exam code'],
+        'điểm': ['điểm số', 'số điểm', 'point', 'score'],
+        'đđgck': ['đđgck', 'điểm ck', 'điểm cuối kỳ', 'ck', 'cuối kỳ'],
+        'đđggk': ['đđggk', 'điểm gk', 'điểm giữa kỳ', 'gk', 'giữa kỳ'],
+        'đđgtx': ['đđgtx', 'điểm tx', 'điểm thường xuyên', 'tx', 'thường xuyên'],
+        'đtbmhki': ['đtbmhki', 'đtb hk1', 'điểm tb', 'điểm trung bình']
     }
     
     # Check variations
     for col in df.columns:
-        col_lower = col.lower()
+        col_lower = str(col).lower().strip()
         for key, variations in name_variations.items():
-            if target_name == key:
+            if target_name_lower == key or target_name_lower in variations:
                 if any(var in col_lower for var in variations):
                     return col
-                    
+                # Partial match
+                if any(col_lower in var or var in col_lower for var in variations):
+                    return col
+    
     return None
 
 def search_student(event=None):
-    """Tìm kiếm học sinh"""
-    global df, search_timer_id, search_index
+    """Tìm kiếm học sinh với search caching"""
+    global df, search_timer_id, search_index, _search_cache
     
     # Reset timer
     search_timer_id = None
     
+    # Clear search cache if data changed
+    if df is not None:
+        _search_cache.clear_if_data_changed(df)
+    
     # Hiển thị thông báo xử lý nếu dữ liệu lớn
     if df is not None and len(df) > 1000:
-        status_label.config(text="Đang tìm kiếm trong dữ liệu lớn...")
+        status_label.configure(text="Đang tìm kiếm trong dữ liệu lớn...")
         root.update()  # Cập nhật giao diện trước khi thực hiện tìm kiếm
     
     # Clear existing items
@@ -1079,9 +1359,28 @@ def search_student(event=None):
     ten_hoc_sinh = entry_student_name.get().strip().lower()  # Chuyển về chữ thường để tìm kiếm không phân biệt hoa thường
     name_col = column_mapping['name']
     
-    # Tạo search index nếu là lần đầu tìm kiếm hoặc nếu df mới được load
-    if 'search_index' not in globals() or search_index is None or len(search_index) != len(df):
-        search_index = df[name_col].str.lower()
+    # 1. Lấy dữ liệu cơ sở và áp dụng Quick Filter nếu có
+    result = df.copy()
+    if 'current_filter_type' in globals() and current_filter_type != 'all':
+        score_col = column_mapping.get('score')
+        if not score_col:
+            score_col = find_matching_column(result, 'Điểm')
+            
+        if score_col:
+            temp_scores = pd.to_numeric(result[score_col], errors='coerce')
+            if current_filter_type == 'high':
+                result = result[temp_scores >= 7]
+            elif current_filter_type == 'medium':
+                result = result[(temp_scores >= 5) & (temp_scores < 7)]
+            elif current_filter_type == 'low':
+                result = result[temp_scores < 5]
+            elif current_filter_type == 'no_score':
+                result = result[temp_scores.isna()]
+                
+    # 2. Áp dụng tìm kiếm (với kết quả đã lọc)
+    if ten_hoc_sinh:
+        mask = result[name_col].astype(str).str.lower().str.contains(ten_hoc_sinh, na=False)
+        result = result[mask]
 
     # Get display values helper (giữ nguyên)
     def get_display_values(row):
@@ -1090,7 +1389,12 @@ def search_student(event=None):
             if col_key in column_mapping:
                 value = row[column_mapping[col_key]]
                 if col_key == 'score':
-                    values.append(f"{value:.2f}" if pd.notna(value) else 'Chưa có điểm')
+                    # Convert to float safely
+                    try:
+                        score_val = pd.to_numeric(value, errors='coerce')
+                        values.append(f"{score_val:.2f}" if pd.notna(score_val) else 'Chưa có điểm')
+                    except:
+                        values.append('Chưa có điểm')
                 else:
                     values.append(str(value) if pd.notna(value) else '')
         return values
@@ -1113,10 +1417,14 @@ def search_student(event=None):
             tree.item(item_id, tags=('no_score',))
     
     # Display results with improved performance
-    if not ten_hoc_sinh:
-        # Nếu số lượng học sinh lớn, giới hạn hiển thị ban đầu
-        display_limit = 100 if len(df) > 100 else len(df)
-        for _, row in df.head(display_limit).iterrows():
+    if result.empty:
+        tree.insert('', 'end', values=('Không tìm thấy kết quả phù hợp', '', ''))
+    else:
+        # Giới hạn kết quả hiển thị
+        result_limit = 200 if len(result) > 200 else len(result)
+        
+        # Đưa kết quả vào treeview
+        for _, row in result.head(result_limit).iterrows():
             values = get_display_values(row)
             if values:
                 item_id = tree.insert('', 'end', values=values)
@@ -1124,43 +1432,22 @@ def search_student(event=None):
                 if 'score' in column_mapping:
                     apply_color_by_score(item_id, row[column_mapping['score']])
         
-        # Thông báo nếu chỉ hiển thị một phần
-        if len(df) > display_limit:
-            tree.insert('', 'end', values=(f"--- Hiển thị {display_limit}/{len(df)} học sinh. Nhập từ khóa để tìm kiếm ---", "", ""))
-    else:
-        # Tạo mask cho việc tìm kiếm
-        mask = search_index.str.contains(ten_hoc_sinh, na=False)
-        result = df[mask]
-        
-        if result.empty:
-            tree.insert('', 'end', values=('Không tìm thấy học sinh',) * len(column_mapping))
-        else:
-            # Giới hạn kết quả nếu quá nhiều
-            result_limit = 200 if len(result) > 200 else len(result)
-            
-            # Đưa kết quả vào treeview
-            for _, row in result.head(result_limit).iterrows():
-                values = get_display_values(row)
-                if values:
-                    item_id = tree.insert('', 'end', values=values)
-                    # Áp dụng màu theo điểm
-                    if 'score' in column_mapping:
-                        apply_color_by_score(item_id, row[column_mapping['score']])
-            
-            # Thông báo nếu có quá nhiều kết quả
-            if len(result) > result_limit:
-                tree.insert('', 'end', values=(f"--- Hiển thị {result_limit}/{len(result)} kết quả. Thêm ký tự để lọc chi tiết hơn ---", "", ""))
-                    
-            # Nếu chỉ tìm thấy một học sinh, tự động chọn học sinh đó
-            if len(result) == 1:
-                first_item = tree.get_children()[0]
-                tree.selection_set(first_item)
-                tree.focus(first_item)
-                tree.see(first_item)
+        # Thông báo nếu có quá nhiều kết quả
+        if len(result) > result_limit:
+            msg = f"--- Hiển thị {result_limit}/{len(result)} kết quả. Thêm ký tự để tìm kiếm chi tiết ---"
+            tree.insert('', 'end', values=(msg, "", ""))
+                
+        # Nếu chỉ tìm thấy một học sinh, tự động chọn học sinh đó
+        if len(result) == 1:
+            first_item = tree.get_children()[0]
+            tree.selection_set(first_item)
+            tree.focus(first_item)
+            tree.see(first_item)
     
     # Cập nhật trạng thái
+
     if df is not None and len(df) > 1000:
-        status_label.config(text=f"Đã tải file: {os.path.basename(file_path)}")
+        status_label.configure(text=f"Đã tải file: {os.path.basename(file_path)}")
                 
     update_stats()
 
@@ -1299,7 +1586,7 @@ def update_config(event=None):
         save_config()  # Lưu vào file
         
         # Cập nhật label thông tin ở header
-        score_per_q_label.config(text=f"({score_per_q}đ/câu)")
+        score_per_q_label.configure(text=f"({score_per_q}đ/câu)")
         
         ToastNotification.show(f"✅ Đã cập nhật: {max_q} câu, mỗi câu {score_per_q} điểm", "success")
         
@@ -1348,14 +1635,14 @@ def update_undo_redo_buttons():
     global undo_manager
     try:
         if undo_manager.can_undo():
-            undo_button.config(state='normal')
+            undo_button.configure(state='normal')
         else:
-            undo_button.config(state='disabled')
+            undo_button.configure(state='disabled')
         
         if undo_manager.can_redo():
-            redo_button.config(state='normal')
+            redo_button.configure(state='normal')
         else:
-            redo_button.config(state='disabled')
+            redo_button.configure(state='disabled')
     except:
         pass  # Buttons chưa được tạo
 
@@ -1509,6 +1796,190 @@ def customize_exam_codes():
     
     ttk.Button(code_window, text="Lưu", command=save_codes).pack(pady=10)
 
+def customize_excel_reading():
+    """Mở cửa sổ cài đặt Excel Reading (header detection, patterns, caching)"""
+    excel_window = tk.Toplevel(root)
+    excel_window.title("⚙️ Cài đặt đọc file Excel")
+    excel_window.geometry("600x550")
+    excel_window.transient(root)
+    excel_window.grab_set()
+    
+    # Notebook for tabs
+    notebook = ttk.Notebook(excel_window)
+    notebook.pack(fill='both', expand=True, padx=10, pady=10)
+    
+    # ===== TAB 1: Header Detection =====
+    header_tab = ttk.Frame(notebook)
+    notebook.add(header_tab, text="📍 Phát hiện Header")
+    
+    header_frame = ttk.LabelFrame(header_tab, text="Cài đặt phát hiện header", padding=10)
+    header_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    excel_config = config.get('excel_reading', {})
+    header_config = excel_config.get('header_detection', {})
+    
+    # Enabled
+    header_enabled_var = tk.BooleanVar(value=header_config.get('enabled', True))
+    ttk.Checkbutton(header_frame, text="Bật tự động phát hiện header", 
+                   variable=header_enabled_var).pack(anchor="w", pady=5)
+    
+    # Max search rows
+    max_rows_frame = ttk.Frame(header_frame)
+    max_rows_frame.pack(fill="x", pady=5)
+    ttk.Label(max_rows_frame, text="Số dòng quét tối đa:").pack(side="left", padx=5)
+    max_rows_var = tk.IntVar(value=header_config.get('max_search_rows', 50))
+    max_rows_spin = ttk.Spinbox(max_rows_frame, from_=10, to=100, textvariable=max_rows_var, width=10)
+    max_rows_spin.pack(side="left", padx=5)
+    ttk.Label(max_rows_frame, text="dòng", foreground="gray").pack(side="left")
+    
+    # Multi-level support
+    multi_level_var = tk.BooleanVar(value=header_config.get('multi_level_support', True))
+    ttk.Checkbutton(header_frame, text="Hỗ trợ header nhiều cấp (merged cells)", 
+                   variable=multi_level_var).pack(anchor="w", pady=5)
+    
+    # Separator
+    sep_frame = ttk.Frame(header_frame)
+    sep_frame.pack(fill="x", pady=5)
+    ttk.Label(sep_frame, text="Ký tự ngăn cách khi kết hợp header:").pack(side="left", padx=5)
+    sep_var = tk.StringVar(value=header_config.get('merge_separator', '_'))
+    sep_entry = ttk.Entry(sep_frame, textvariable=sep_var, width=5)
+    sep_entry.pack(side="left", padx=5)
+    ttk.Label(sep_frame, text='(ví dụ: "ĐĐGtx" + "1" → "ĐĐGtx_1")', foreground="gray").pack(side="left")
+    
+    # Min columns match
+    min_cols_frame = ttk.Frame(header_frame)
+    min_cols_frame.pack(fill="x", pady=5)
+    ttk.Label(min_cols_frame, text="Số cột tối thiểu phải khớp:").pack(side="left", padx=5)
+    min_cols_var = tk.IntVar(value=header_config.get('min_columns_match', 3))
+    min_cols_spin = ttk.Spinbox(min_cols_frame, from_=1, to=10, textvariable=min_cols_var, width=10)
+    min_cols_spin.pack(side="left", padx=5)
+    
+    # Validate data rows
+    validate_var = tk.BooleanVar(value=header_config.get('validate_data_rows', True))
+    ttk.Checkbutton(header_frame, text="Validate dòng data tiếp theo", 
+                   variable=validate_var).pack(anchor="w", pady=5)
+    
+    # ===== TAB 2: Merged Cells =====
+    merged_tab = ttk.Frame(notebook)
+    notebook.add(merged_tab, text="🔗 Merged Cells")
+    
+    merged_frame = ttk.LabelFrame(merged_tab, text="Xử lý merged cells", padding=10)
+    merged_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    merged_config = excel_config.get('merged_cell_handling', {})
+    
+    merged_enabled_var = tk.BooleanVar(value=merged_config.get('enabled', True))
+    ttk.Checkbutton(merged_frame, text="Bật xử lý merged cells", 
+                   variable=merged_enabled_var).pack(anchor="w", pady=5)
+    
+    forward_fill_var = tk.BooleanVar(value=merged_config.get('forward_fill', True))
+    ttk.Checkbutton(merged_frame, text="Forward fill merged cells", 
+                   variable=forward_fill_var).pack(anchor="w", pady=5)
+    
+    combine_var = tk.BooleanVar(value=merged_config.get('combine_with_subheader', True))
+    ttk.Checkbutton(merged_frame, text="Kết hợp với sub-header", 
+                   variable=combine_var).pack(anchor="w", pady=5)
+    
+    # Info label
+    info_label = ttk.Label(merged_frame, 
+                          text="ℹ️ Xử lý merged cells giúp nhận diện header phức tạp\n"
+                               "như 'ĐĐGtx' merge với các cột '1, 2, 3, 4'",
+                          foreground="gray", justify="left")
+    info_label.pack(anchor="w", pady=10)
+    
+    # ===== TAB 3: Performance =====
+    perf_tab = ttk.Frame(notebook)
+    notebook.add(perf_tab, text="⚡ Performance")
+    
+    perf_frame = ttk.LabelFrame(perf_tab, text="Cài đặt hiệu năng", padding=10)
+    perf_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    perf_config = excel_config.get('performance', {})
+    
+    cache_enabled_var = tk.BooleanVar(value=perf_config.get('enable_caching', True))
+    ttk.Checkbutton(perf_frame, text="Bật caching (khuyến nghị)", 
+                   variable=cache_enabled_var).pack(anchor="w", pady=5)
+    
+    # Cache max files
+    cache_frame = ttk.Frame(perf_frame)
+    cache_frame.pack(fill="x", pady=5)
+    ttk.Label(cache_frame, text="Số file Excel cache tối đa:").pack(side="left", padx=5)
+    cache_max_var = tk.IntVar(value=perf_config.get('cache_max_files', 3))
+    cache_spin = ttk.Spinbox(cache_frame, from_=1, to=10, textvariable=cache_max_var, width=10)
+    cache_spin.pack(side="left", padx=5)
+    
+    cache_search_var = tk.BooleanVar(value=perf_config.get('cache_search_results', True))
+    ttk.Checkbutton(perf_frame, text="Cache kết quả tìm kiếm", 
+                   variable=cache_search_var).pack(anchor="w", pady=5)
+    
+    cache_stats_var = tk.BooleanVar(value=perf_config.get('cache_stats', True))
+    ttk.Checkbutton(perf_frame, text="Cache thống kê", 
+                   variable=cache_stats_var).pack(anchor="w", pady=5)
+    
+    # Clear cache button
+    def clear_all_caches():
+        global _df_cache, _search_cache, _stats_cache
+        _df_cache.clear()
+        _search_cache.clear()
+        _stats_cache.clear()
+        ConfigCache.invalidate()
+        ToastNotification.show("✅ Đã xóa toàn bộ cache", "success")
+    
+    ttk.Button(perf_frame, text="🗑️ Xóa cache", command=clear_all_caches).pack(anchor="w", pady=10)
+    
+    # Info
+    info_label2 = ttk.Label(perf_frame, 
+                           text="ℹ️ Caching giúp tăng tốc load file lần 2 và search.\n"
+                                "Cache tự động clear khi file/data thay đổi.",
+                           foreground="gray", justify="left")
+    info_label2.pack(anchor="w", pady=10)
+    
+    # ===== SAVE BUTTON =====
+    button_frame = ttk.Frame(excel_window)
+    button_frame.pack(fill="x", padx=10, pady=10)
+    
+    def save_excel_settings():
+        # Update config
+        if 'excel_reading' not in config:
+            config['excel_reading'] = {}
+        
+        # Header detection
+        config['excel_reading']['header_detection'] = {
+            'enabled': header_enabled_var.get(),
+            'max_search_rows': max_rows_var.get(),
+            'multi_level_support': multi_level_var.get(),
+            'merge_separator': sep_var.get(),
+            'min_columns_match': min_cols_var.get(),
+            'validate_data_rows': validate_var.get()
+        }
+        
+        # Merged cells
+        config['excel_reading']['merged_cell_handling'] = {
+            'enabled': merged_enabled_var.get(),
+            'forward_fill': forward_fill_var.get(),
+            'combine_with_subheader': combine_var.get(),
+            'cache_merged_info': merged_config.get('cache_merged_info', True)
+        }
+        
+        # Performance
+        config['excel_reading']['performance'] = {
+            'enable_caching': cache_enabled_var.get(),
+            'cache_max_files': cache_max_var.get(),
+            'cache_search_results': cache_search_var.get(),
+            'cache_stats': cache_stats_var.get()
+        }
+        
+        # Update cache max size
+        global _df_cache
+        _df_cache.max_size = cache_max_var.get()
+        
+        save_config()
+        excel_window.destroy()
+        ToastNotification.show("✅ Đã lưu cài đặt Excel Reading", "success")
+    
+    ttk.Button(button_frame, text="💾 Lưu", command=save_excel_settings).pack(side="right", padx=5)
+    ttk.Button(button_frame, text="❌ Hủy", command=excel_window.destroy).pack(side="right")
+
 def customize_columns():
     """Open window to customize column names"""
     column_window = tk.Toplevel(root)
@@ -1641,11 +2112,11 @@ def customize_security():
     def toggle_password_visibility():
         """Hiện/ẩn mật khẩu"""
         if show_password_var.get():
-            password_entry.config(show="")
-            confirm_password_entry.config(show="")
+            password_entry.configure(show="")
+            confirm_password_entry.configure(show="")
         else:
-            password_entry.config(show="*")
-            confirm_password_entry.config(show="*")
+            password_entry.configure(show="*")
+            confirm_password_entry.configure(show="*")
     
     ttk.Checkbutton(password_frame, text="Hiện mật khẩu", 
                   variable=show_password_var,
@@ -1725,7 +2196,8 @@ def backup_data():
         
         # Thông tin về số lượng học sinh
         total_students = len(df)
-        scored_students = df.notna()[config['columns']['score']].sum() if config['columns']['score'] in df.columns else 0
+        score_col = find_matching_column(df, config['columns']['score'])
+        scored_students = df[score_col].notna().sum() if score_col else 0
         
         # Thêm thông tin vào tên backup
         backup_filename = f"{name}_backup_{timestamp}_{total_students}hs{ext}"
@@ -1776,10 +2248,10 @@ def backup_data():
         def toggle_password_entry(*args):
             # Kích hoạt/vô hiệu hóa ô mật khẩu dựa trên trạng thái của checkbox
             if encrypt_var.get():
-                password_entry.config(state="normal")
+                password_entry.configure(state="normal")
             else:
                 password_entry.delete(0, tk.END)
-                password_entry.config(state="disabled")
+                password_entry.configure(state="disabled")
         
         # Thiết lập callback khi thay đổi trạng thái encrypt
         encrypt_var.trace_add("write", toggle_password_entry)
@@ -2088,7 +2560,8 @@ def auto_backup_on_exit():
             
             # Thông tin về số lượng học sinh
             total_students = len(df)
-            scored_students = df.notna()[config['columns']['score']].sum() if config['columns']['score'] in df.columns else 0
+            score_col = find_matching_column(df, config['columns']['score'])
+            scored_students = df[score_col].notna().sum() if score_col else 0
             
             # Kiểm tra nếu mã hóa được bật trong cấu hình
             encrypt_backups = config.get('security', {}).get('encrypt_backups', False)
@@ -2230,7 +2703,7 @@ def refresh_ui():
         
         # Cập nhật status label nếu file_path tồn tại
         if 'file_path' in globals() and file_path:
-            status_label.config(
+            status_label.configure(
                 text=f"Dữ liệu đang hiển thị: {os.path.basename(file_path)} ({len(df)} học sinh)",
 
             )
@@ -2245,7 +2718,7 @@ def refresh_ui():
         verify_required_columns(df)
     else:
         # Nếu không có dữ liệu, hiển thị thông báo
-        status_label.config(text="Chưa tải file Excel")
+        status_label.configure(text="Chưa tải file Excel")
         for item in tree.get_children():
             tree.delete(item)
         tree.insert('', 'end', values=("Không có dữ liệu để hiển thị. Vui lòng tải file Excel.", "", ""))
@@ -2360,241 +2833,121 @@ def create_ui():
     # Thiết lập responsive cho cửa sổ
     ui_utils.init_responsive_settings(root, config)
     
-    # ========== HEADER HIỆN ĐẠI ==========
-    header_frame = tk.Frame(root, bg=config['ui']['theme']['primary'], height=55)
-    header_frame.pack(fill="x")
+    # ========== HEADER ==========
+    header_frame = ctk.CTkFrame(root, height=55, corner_radius=0, fg_color=config['ui']['theme']['primary'])
+    header_frame.pack(fill="x", side="top")
     header_frame.pack_propagate(False)
     
-    header_content = tk.Frame(header_frame, bg=config['ui']['theme']['primary'])
-    header_content.pack(fill="both", expand=True, padx=20, pady=12)
+    header_content = ctk.CTkFrame(header_frame, fg_color="transparent")
+    header_content.pack(fill="both", expand=True, padx=20, pady=10)
     
-    # Title
-    tk.Label(header_content, 
-            text="📊 Quản Lý Điểm Học Sinh",
-            font=(config['ui']['font_family'], 15, 'bold'),
-            bg=config['ui']['theme']['primary'],
-            fg='white').pack(side="left")
+    # Title — clean, no emoji overload
+    ctk.CTkLabel(header_content, 
+            text="Quản Lý Điểm Học Sinh",
+            font=(config['ui']['font_family'], 16, 'bold'),
+            text_color='white').pack(side="left")
     
-    # Config số câu ở giữa header
-    config_container = tk.Frame(header_content, bg=config['ui']['theme']['primary'])
-    config_container.pack(side="left", padx=30)
+    # Right side — Cấu hình
+    right_header = ctk.CTkFrame(header_content, fg_color="transparent")
+    right_header.pack(side="right")
     
-    tk.Label(config_container, text="⚙️ Số câu:",
-            font=(config['ui']['font_family'], 10),
-            bg=config['ui']['theme']['primary'],
-            fg='white').pack(side="left", padx=(0, 5))
+    ctk.CTkLabel(right_header, text="Mã đề:", text_color='white', font=(config['ui']['font_family'], 12)).pack(side="left", padx=(0, 4))
+    entry_exam_code = ctk.CTkComboBox(right_header, values=config['exam_codes'], width=100, height=28, font=(config['ui']['font_family'], 12))
+    entry_exam_code.pack(side="left", padx=(0, 15))
     
-    entry_max_questions = tk.Entry(config_container, width=8,
-                                  font=(config['ui']['font_family'], 10),
-                                  justify='center',
-                                  bg='#FFFFFF',
-                                  fg='#1A202C',
-                                  relief='flat',
-                                  bd=0)
+    ctk.CTkLabel(right_header, text="Số câu:", text_color='white', font=(config['ui']['font_family'], 12)).pack(side="left", padx=(0, 4))
+    entry_max_questions = ctk.CTkEntry(right_header, width=40, height=28, font=(config['ui']['font_family'], 12), justify='center')
     entry_max_questions.insert(0, str(config['max_questions']))
-    entry_max_questions.pack(side="left", padx=(0, 5))
+    entry_max_questions.pack(side="left")
     
-    save_config_btn = tk.Button(config_container, text="💾",
-                               font=(config['ui']['font_family'], 10),
-                               command=update_config,
-                               bg=config['ui']['theme']['success'],
-                               fg='white',
-                               relief='flat',
-                               bd=0,
-                               padx=8,
-                               cursor='hand2')
-    save_config_btn.pack(side="left")
+    score_per_q_label = ctk.CTkLabel(right_header, text=f"({config['score_per_question']}đ)", text_color="#A0AEC0", font=(config['ui']['font_family'], 10))
+    score_per_q_label.pack(side="left", padx=(4, 4))
     
-    score_per_q_label = tk.Label(config_container, 
-                                text=f"({config['score_per_question']}đ/câu)",
-                                font=(config['ui']['font_family'], 8),
-                                bg=config['ui']['theme']['primary'],
-                                fg='#E0E0E0')
-    score_per_q_label.pack(side="left", padx=(5, 0))
+    ctk.CTkButton(right_header, text="Lưu", command=update_config, width=40, height=28, fg_color="#4A5568", hover_color="#2D3748").pack(side="left", padx=(0, 20))
     
-    # Right side
-    right_container = tk.Frame(header_content, bg=config['ui']['theme']['primary'])
-    right_container.pack(side="right")
-    
-    version_display = version_utils.get_version_display()
-    tk.Label(right_container, text=version_display,
-            font=(config['ui']['font_family'], 8),
-            bg=config['ui']['theme']['primary'],
-            fg='#E0E0E0').pack(side="left", padx=(0, 12))
-    
-    dark_mode_frame = ui_utils.create_dark_mode_switch(right_container, config, style, root, save_config)
-    dark_mode_frame.pack(side="left")
-    
-    # ========== STATUSBAR Ở DƯỚI CÙNG (PACK TRƯỚC ĐỂ HIỆN) ==========
-    statusbar = tk.Frame(root, bg=config['ui']['theme'].get('statusbar_bg', config['ui']['theme']['card']), 
-                        height=28, relief='flat')
+    # ========== STATUSBAR ==========
+    statusbar = ctk.CTkFrame(root, height=35, corner_radius=0)
     statusbar.pack(side='bottom', fill='x')
     statusbar.pack_propagate(False)
     
-    status_label = tk.Label(statusbar, text="📌 Sẵn sàng - Chưa tải file", 
-                          bg=config['ui']['theme'].get('statusbar_bg', config['ui']['theme']['card']),
-                          fg=config['ui']['theme'].get('statusbar_text', config['ui']['theme']['text']),
-                          font=(config['ui']['font_family'], 9),
-                          anchor='w',
-                          padx=15)
-    status_label.pack(side='left', fill='both', expand=True)
+    status_label = ctk.CTkLabel(statusbar, text="Sẵn sàng", 
+                          font=(config['ui']['font_family'], 12))
+    status_label.pack(side='left', padx=15)
     
-    # Version info ở bên phải statusbar
     version_display = version_utils.get_version_display()
-    version_label = tk.Label(statusbar, text=f"v{version_display}", 
-                            bg=config['ui']['theme'].get('statusbar_bg', config['ui']['theme']['card']),
-                            fg=config['ui']['theme'].get('statusbar_text', '#A0AEC0'),
-                            font=(config['ui']['font_family'], 8),
-                            padx=15)
-    version_label.pack(side='right')
+    version_label = ctk.CTkLabel(statusbar, text=f"v{version_display}", 
+                            text_color="gray",
+                            font=(config['ui']['font_family'], 11))
+    version_label.pack(side='right', padx=15)
     
-    # Helper function cho refresh
-    def refresh_data():
-        global df, file_path
-        if file_path and os.path.exists(file_path):
-            try:
-                df = pd.read_excel(file_path)
-                search_student()
-                update_stats()
-                update_score_extremes()
-                status_label.config(text=f"✅ Đã làm mới dữ liệu")
-                ToastNotification.show("✅ Đã làm mới dữ liệu", "success")
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể đọc file: {str(e)}")
-        else:
-            ToastNotification.show("ℹ️ Chưa chọn file", "info")
+    # ========== MAIN CONTAINER ==========
+    main_container = ctk.CTkFrame(root, fg_color="transparent")
+    main_container.pack(fill="both", expand=True, padx=15, pady=15)
     
-    # ========== MAIN CONTAINER - 2 CỘT ==========
-    main_container = ttk.Frame(root, style='TFrame')
-    main_container.pack(fill="both", expand=True, padx=8, pady=8)
-    
-    # Configure grid weights - 70% trái, 30% phải với minsize đảm bảo không bị khuất
-    main_container.grid_columnconfigure(0, weight=7, minsize=800)
-    main_container.grid_columnconfigure(1, weight=3, minsize=360)
+    # Tỷ lệ co giãn: 7:3, minsize thấp để scale tốt trên mọi màn hình
+    main_container.grid_columnconfigure(0, weight=7, minsize=500)
+    main_container.grid_columnconfigure(1, weight=3, minsize=280)
     main_container.grid_rowconfigure(0, weight=1)
     
-    # ========== CỘT TRÁI - DANH SÁCH HỌC SINH ==========
-    left_column = ttk.Frame(main_container, style='TFrame')
-    left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 6))
+    # ========== CỘT TRÁI ==========
+    left_column = ctk.CTkFrame(main_container, fg_color="transparent")
+    left_column.grid(row=0, column=0, sticky='nsew', padx=(0, 8))
     
-    # Search bar
-    search_frame = ttk.LabelFrame(left_column, text="🔍 Tìm Kiếm & Lọc", padding=8)
+    # Toolbar — tìm kiếm + lọc + undo/redo trên cùng 1 vùng gọn
+    search_frame = ctk.CTkFrame(left_column, fg_color="transparent")
     search_frame.pack(fill="x", pady=(0, 6))
     
-    search_input_frame = ttk.Frame(search_frame)
-    search_input_frame.pack(fill="x")
+    # Hàng 1: Ô tìm kiếm + nút thêm + undo/redo
+    search_row = ctk.CTkFrame(search_frame, fg_color="transparent")
+    search_row.pack(fill="x")
     
-    entry_student_name = ttk.Entry(search_input_frame, 
-                                  font=(config['ui']['font_family'], 11))
-    entry_student_name.pack(side="left", fill="x", expand=True, padx=(0, 6))
+    entry_student_name = ctk.CTkEntry(search_row, height=35, placeholder_text="Nhập tên để tìm kiếm...", font=(config['ui']['font_family'], 13))
+    entry_student_name.pack(side="left", fill="x", expand=True, padx=(0, 4))
     entry_student_name.bind("<KeyRelease>", delayed_search)
     
-    ttk.Button(search_input_frame, text="➕ Thêm", 
-              command=add_student, style='Success.TButton', width=10).pack(side="left")
+    ctk.CTkButton(search_row, text="Thêm HS", height=35, command=add_student, fg_color=config['ui']['theme']['success'], hover_color="#276749", width=80).pack(side="left", padx=(0, 4))
     
-    # Undo/Redo buttons - thêm global để update được
     global undo_button, redo_button
-    undo_redo_frame = ttk.Frame(search_frame)
-    undo_redo_frame.pack(fill="x", pady=(4, 0))
+    undo_button = ctk.CTkButton(search_row, text="↩", width=35, height=35, command=perform_undo, state='disabled', fg_color="#4A5568", hover_color="#2D3748")
+    undo_button.pack(side="left", padx=(0, 2))
+    ToolTip(undo_button, "Hoàn tác (Ctrl+Z)")
     
-    undo_button = ttk.Button(undo_redo_frame, text="⏪ Hoàn tác", 
-                            command=perform_undo, width=12, state='disabled')
-    undo_button.pack(side="left", padx=(0, 4))
-    ToolTip(undo_button, "Hoàn tác thao tác cuối (Ctrl+Z)")
-    
-    redo_button = ttk.Button(undo_redo_frame, text="⏩ Làm lại", 
-                            command=perform_redo, width=12, state='disabled')
+    redo_button = ctk.CTkButton(search_row, text="↪", width=35, height=35, command=perform_redo, state='disabled', fg_color="#4A5568", hover_color="#2D3748")
     redo_button.pack(side="left")
-    ToolTip(redo_button, "Làm lại thao tác đã hoàn tác (Ctrl+Y)")
+    ToolTip(redo_button, "Làm lại (Ctrl+Y)")
     
-    # Filter nâng cao
-    filter_frame = ttk.Frame(search_frame)
+    # Hàng 2: Bộ lọc nhanh
+    filter_frame = ctk.CTkFrame(search_frame, fg_color="transparent")
     filter_frame.pack(fill="x", pady=(6, 0))
     
-    ttk.Label(filter_frame, text="🎯 Lọc nhanh:", 
-             font=(config['ui']['font_family'], 9)).pack(side="left", padx=(0, 5))
-    
     def apply_quick_filter(filter_type):
-        """Áp dụng filter nhanh"""
-        global df
-        if df is None or df.empty:
-            return
+        """Áp dụng filter nhanh và gọi tìm kiếm"""
+        global current_filter_type
+        current_filter_type = filter_type
+        for btn, type_key in quick_filter_btns:
+            if type_key == filter_type:
+                btn.configure(fg_color=config['ui']['theme']['primary'])
+            else:
+                btn.configure(fg_color="#4A5568")
+        search_student()
         
-        # Xóa treeview
-        for item in tree.get_children():
-            tree.delete(item)
-        
-        # Tìm cột
-        name_col = find_matching_column(df, config['columns']['name'])
-        score_col = 'Điểm'
-        exam_col = 'Mã đề'
-        
-        # Áp dụng filter
-        if filter_type == 'all':
-            filtered_df = df
-        elif filter_type == 'high':  # Điểm >= 7
-            filtered_df = df[df[score_col] >= 7]
-        elif filter_type == 'medium':  # 5 <= Điểm < 7
-            filtered_df = df[(df[score_col] >= 5) & (df[score_col] < 7)]
-        elif filter_type == 'low':  # Điểm < 5
-            filtered_df = df[df[score_col] < 5]
-        elif filter_type == 'no_score':  # Chưa có điểm
-            filtered_df = df[df[score_col].isna()]
-        else:
-            filtered_df = df
-        
-        # Hiển thị kết quả
-        display_limit = 200 if len(filtered_df) > 200 else len(filtered_df)
-        
-        def apply_color(item_id, score_val):
-            try:
-                if pd.notna(score_val):
-                    score = float(score_val)
-                    if score < 5:
-                        tree.item(item_id, tags=('low_score',))
-                    elif score < 7:
-                        tree.item(item_id, tags=('medium_score',))
-                    else:
-                        tree.item(item_id, tags=('high_score',))
-                else:
-                    tree.item(item_id, tags=('no_score',))
-            except:
-                tree.item(item_id, tags=('no_score',))
-        
-        for _, row in filtered_df.head(display_limit).iterrows():
-            values = [
-                row[name_col] if name_col in row else "",
-                row[exam_col] if exam_col in row and pd.notna(row[exam_col]) else "",
-                f"{row[score_col]:.2f}" if score_col in row and pd.notna(row[score_col]) else "Chưa có điểm"
-            ]
-            item_id = tree.insert('', 'end', values=values)
-            if score_col in row:
-                apply_color(item_id, row[score_col])
-        
-        if len(filtered_df) > display_limit:
-            tree.insert('', 'end', values=(f"--- Hiển thị {display_limit}/{len(filtered_df)} kết quả ---", "", ""))
-        
-        # Hiển thị toast
-        ToastNotification.show(f"Đã lọc: {len(filtered_df)} học sinh", "info")
+    global quick_filter_btns
+    quick_filter_btns = []
     
-    ttk.Button(filter_frame, text="Tất cả", 
-              command=lambda: apply_quick_filter('all'), width=8).pack(side="left", padx=2)
-    ttk.Button(filter_frame, text="🟢 ≥7", 
-              command=lambda: apply_quick_filter('high'), width=8).pack(side="left", padx=2)
-    ttk.Button(filter_frame, text="🟡 5-7", 
-              command=lambda: apply_quick_filter('medium'), width=8).pack(side="left", padx=2)
-    ttk.Button(filter_frame, text="🔴 <5", 
-              command=lambda: apply_quick_filter('low'), width=8).pack(side="left", padx=2)
-    ttk.Button(filter_frame, text="⚪ Chưa", 
-              command=lambda: apply_quick_filter('no_score'), width=8).pack(side="left", padx=2)
+    filter_labels = [
+        ("Tất cả", 'all'), ("≥7", 'high'), ("5-7", 'medium'),
+        ("<5", 'low'), ("Chưa", 'no_score')
+    ]
+    for label, key in filter_labels:
+        btn = ctk.CTkButton(filter_frame, text=label, command=lambda k=key: apply_quick_filter(k), width=60, height=28, fg_color="#4A5568", hover_color=config['ui']['theme']['primary_dark'])
+        btn.pack(side="left", padx=(0, 4))
+        if key == 'all':
+            btn.configure(fg_color=config['ui']['theme']['primary'])
+        quick_filter_btns.append((btn, key))
     
-    ttk.Label(search_frame, text="💡 Ctrl+F để tìm nhanh | Click header để sắp xếp", 
-             font=(config['ui']['font_family'], 8),
-             foreground=config['ui']['theme']['text_secondary']).pack(pady=(4, 0))
-    
-    # Danh sách học sinh - CHÍNH
-    list_frame = ttk.LabelFrame(left_column, text="👥 Danh Sách Học Sinh", padding=8)
-    list_frame.pack(fill="both", expand=True)
+    # Danh sách học sinh (vẫn giữ ttk.Treeview vì ctk không có bảng mặc định tốt)
+    list_frame = ctk.CTkFrame(left_column)
+    list_frame.pack(fill="both", expand=True, pady=(5, 0))
     
     # Treeview
     columns = ('name', 'exam_code', 'score')
@@ -2682,25 +3035,25 @@ def create_ui():
             if len(df_sorted) > display_limit:
                 tree.insert('', 'end', values=(f"--- Hiển thị {display_limit}/{len(df_sorted)} học sinh ---", "", ""))
             
-            # Cập nhật icon cho header
+            # Cập nhật header với mũi tên sắp xếp
             arrow = " ▼" if sort_column['reverse'] else " ▲"
-            tree.heading('name', text=f"👤 {config['columns']['name']}{arrow if col == 'name' else ''}")
-            tree.heading('exam_code', text=f"📋 Mã Đề{arrow if col == 'exam_code' else ''}")
-            tree.heading('score', text=f"📊 Điểm{arrow if col == 'score' else ''}")
+            tree.heading('name', text=f"{config['columns']['name']}{arrow if col == 'name' else ''}")
+            tree.heading('exam_code', text=f"Mã Đề{arrow if col == 'exam_code' else ''}")
+            tree.heading('score', text=f"Điểm{arrow if col == 'score' else ''}")
     
-    tree.heading('name', text=f"👤 {config['columns']['name']}", command=lambda: sort_treeview('name'))
-    tree.heading('exam_code', text=f"📋 Mã Đề", command=lambda: sort_treeview('exam_code'))
-    tree.heading('score', text=f"📊 Điểm", command=lambda: sort_treeview('score'))
+    tree.heading('name', text=config['columns']['name'], command=lambda: sort_treeview('name'))
+    tree.heading('exam_code', text="Mã Đề", command=lambda: sort_treeview('exam_code'))
+    tree.heading('score', text="Điểm", command=lambda: sort_treeview('score'))
     
-    tree.column('name', width=750, minwidth=400)
-    tree.column('exam_code', width=150, minwidth=100, anchor='center')
-    tree.column('score', width=150, minwidth=100, anchor='center')
+    tree.column('name', width=500, minwidth=200)
+    tree.column('exam_code', width=120, minwidth=80, anchor='center')
+    tree.column('score', width=120, minwidth=80, anchor='center')
     
-    # Định nghĩa màu cho các tags (tô màu theo điểm)
-    tree.tag_configure('high_score', background='#D1FAE5', foreground='#065F46')  # Xanh lá nhạt
-    tree.tag_configure('medium_score', background='#FEF3C7', foreground='#92400E')  # Vàng nhạt
-    tree.tag_configure('low_score', background='#FEE2E2', foreground='#991B1B')  # Đỏ nhạt
-    tree.tag_configure('no_score', background='#F3F4F6', foreground='#6B7280')  # Xám nhạt
+    # Màu sắc dịu hơn (giảm độ chói của nền) nhưng chữ nổi bật hơn
+    tree.tag_configure('high_score', background='#022c22', foreground='#34d399', font=(config['ui']['font_family'], 11, 'bold'))
+    tree.tag_configure('medium_score', background='#451a03', foreground='#fbbf24', font=(config['ui']['font_family'], 11, 'bold'))
+    tree.tag_configure('low_score', background='#450a0a', foreground='#f87171', font=(config['ui']['font_family'], 11, 'bold'))
+    tree.tag_configure('no_score', background='#1f2937', foreground='#ffffff', font=(config['ui']['font_family'], 11))
     
     vsb = ttk.Scrollbar(list_frame, orient="vertical", command=tree.yview)
     hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=tree.xview)
@@ -2713,161 +3066,94 @@ def create_ui():
     list_frame.grid_columnconfigure(0, weight=1)
     list_frame.grid_rowconfigure(0, weight=1)
     
-    # ========== CỘT PHẢI - CONTROLS với Scrollable Canvas ==========
-    right_column = ttk.Frame(main_container, style='TFrame')
-    right_column.grid(row=0, column=1, sticky='nsew')
+    # ========== CỘT PHẢI ==========
+    scrollable_right_frame = ctk.CTkScrollableFrame(main_container, fg_color="transparent")
+    scrollable_right_frame.grid(row=0, column=1, sticky='nsew', padx=(10, 0))
     
-    # Tạo Canvas với scrollbar cho cột phải
-    right_canvas = tk.Canvas(right_column, bg=config['ui']['theme']['background'], 
-                            highlightthickness=0, width=360)
-    right_scrollbar = ttk.Scrollbar(right_column, orient="vertical", command=right_canvas.yview)
-    scrollable_right_frame = ttk.Frame(right_canvas, style='TFrame')
+    # ── Cấu hình số câu ──
+    config_card = ctk.CTkFrame(scrollable_right_frame, fg_color=config['ui']['theme']['card'], corner_radius=8)
+    # Nhập Điểm Frame retains just score input now
+    # ── Nhập điểm ──
+    score_card = ctk.CTkFrame(scrollable_right_frame, fg_color=config['ui']['theme']['card'], corner_radius=8)
+    score_card.pack(fill="x", pady=(0, 10))
     
-    scrollable_right_frame.bind(
-        "<Configure>",
-        lambda e: right_canvas.configure(scrollregion=right_canvas.bbox("all"))
-    )
+    ctk.CTkLabel(score_card, text="Nhập Điểm", font=(config['ui']['font_family'], 14, "bold"), text_color=config['ui']['theme']['primary']).pack(anchor="w", padx=15, pady=(10, 5))
     
-    canvas_window = right_canvas.create_window((0, 0), window=scrollable_right_frame, anchor="nw", width=360)
-    right_canvas.configure(yscrollcommand=right_scrollbar.set)
-    
-    # Update canvas window width khi canvas resize
-    def on_canvas_resize(event):
-        right_canvas.itemconfig(canvas_window, width=event.width)
-    right_canvas.bind("<Configure>", on_canvas_resize)
-    
-    right_canvas.pack(side="left", fill="both", expand=True)
-    right_scrollbar.pack(side="right", fill="y")
-    
-    # Bind mousewheel cho scroll mượt - CHỈ KHI CHUỘT Ở TRONG VÙNG PHẢI
-    def on_mousewheel(event):
-        right_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-    
-    def bind_mousewheel(event):
-        right_canvas.bind_all("<MouseWheel>", on_mousewheel)
-    
-    def unbind_mousewheel(event):
-        right_canvas.unbind_all("<MouseWheel>")
-    
-    # Chỉ scroll khi chuột vào vùng cột phải
-    right_canvas.bind("<Enter>", bind_mousewheel)
-    right_canvas.bind("<Leave>", unbind_mousewheel)
-    scrollable_right_frame.bind("<Enter>", bind_mousewheel)
-    scrollable_right_frame.bind("<Leave>", unbind_mousewheel)
-    
-    # Thống kê
-    stats_card = ttk.LabelFrame(scrollable_right_frame, text="📊 Thống Kê Chi Tiết", padding=10)
-    stats_card.pack(fill="x", pady=(0, 6), padx=4)
-    
-    # Progress bar cho tỷ lệ hoàn thành
-    progress_frame = ttk.Frame(stats_card)
-    progress_frame.pack(fill="x", pady=(0, 8))
-    
-    ttk.Label(progress_frame, text="Tiến độ nhập điểm:", 
-             font=(config['ui']['font_family'], 9)).pack(anchor="w")
-    
-    progress_bar = ttk.Progressbar(progress_frame, mode='determinate', length=200)
-    progress_bar.pack(fill="x", pady=(2, 2))
-    
-    progress_label = ttk.Label(progress_frame, text="0%", 
-                              font=(config['ui']['font_family'], 9, 'bold'),
-                              foreground=config['ui']['theme']['primary'])
-    progress_label.pack(anchor="w")
-    
-    # Thống kê tổng quan
-    stats_label = ttk.Label(stats_card, text="0/0 có điểm", 
-                          font=(config['ui']['font_family'], 10, 'bold'))
-    stats_label.pack(pady=4)
-    
-    # Phân loại theo điểm
-    category_frame = ttk.Frame(stats_card)
-    category_frame.pack(fill="x", pady=4)
-    
-    high_score_count = ttk.Label(category_frame, text="🟢 Giỏi (≥7): 0", 
-                                 font=(config['ui']['font_family'], 9),
-                                 foreground='#065F46')
-    high_score_count.pack(anchor="w", pady=1)
-    
-    medium_score_count = ttk.Label(category_frame, text="🟡 Khá (5-7): 0", 
-                                   font=(config['ui']['font_family'], 9),
-                                   foreground='#92400E')
-    medium_score_count.pack(anchor="w", pady=1)
-    
-    low_score_count = ttk.Label(category_frame, text="🔴 Yếu (<5): 0", 
-                                font=(config['ui']['font_family'], 9),
-                                foreground='#991B1B')
-    low_score_count.pack(anchor="w", pady=1)
-    
-    no_score_count = ttk.Label(category_frame, text="⚪ Chưa có: 0", 
-                               font=(config['ui']['font_family'], 9),
-                               foreground='#6B7280')
-    no_score_count.pack(anchor="w", pady=1)
-    
-    # Separator
-    ttk.Separator(stats_card, orient='horizontal').pack(fill="x", pady=6)
-    
-    # Điểm cao/thấp nhất
-    highest_score_label = ttk.Label(stats_card, text="🏆 Cao nhất: N/A", 
-                                  font=(config['ui']['font_family'], 9),
-                                  foreground=config['ui']['theme']['success'])
-    highest_score_label.pack(pady=2)
-    
-    lowest_score_label = ttk.Label(stats_card, text="📉 Thấp nhất: N/A", 
-                                 font=(config['ui']['font_family'], 9),
-                                 foreground=config['ui']['theme']['warning'])
-    lowest_score_label.pack(pady=2)
-    
-    # File Management
-    file_card = ttk.LabelFrame(scrollable_right_frame, text="📁 File", padding=6)
-    file_card.pack(fill="x", pady=(0, 6), padx=4)
-    
-    file_btn_frame = ttk.Frame(file_card)
-    file_btn_frame.pack(fill="x")
-    
-    ttk.Button(file_btn_frame, text="📂 Mở", 
-              command=select_file, width=12).pack(fill="x", pady=2)
-    ttk.Button(file_btn_frame, text="🔄 Làm Mới", 
-              command=refresh_data, width=12).pack(fill="x", pady=2)
-    ttk.Button(file_btn_frame, text="💾 Sao Lưu", 
-              command=backup_data, width=12).pack(fill="x", pady=2)
-    ttk.Button(file_btn_frame, text="📄 Báo Cáo", 
-              command=generate_report, style='Accent.TButton', width=12).pack(fill="x", pady=2)
-    
-    # Nhập điểm
-    score_card = ttk.LabelFrame(scrollable_right_frame, text="✏️ Nhập Điểm", padding=6)
-    score_card.pack(fill="x", padx=4)
-    
-    ttk.Label(score_card, text="🔢 Mã Đề:", 
-             font=(config['ui']['font_family'], 9)).pack()
-    entry_exam_code = ttk.Combobox(score_card, width=14, values=config['exam_codes'],
-                                 font=(config['ui']['font_family'], 10))
-    entry_exam_code.pack(pady=(2, 8))
-    
-    ttk.Label(score_card, text="✅ Số Câu Đúng:", 
-             font=(config['ui']['font_family'], 9)).pack()
-    entry_correct_count = ttk.Entry(score_card, width=14,
-                                  font=(config['ui']['font_family'], 11),
+    # Số câu đúng + tính điểm
+    ctk.CTkLabel(score_card, text="Số câu đúng", font=(config['ui']['font_family'], 12)).pack(anchor="w", padx=15)
+    entry_correct_count = ctk.CTkEntry(score_card, height=36,
+                                  font=(config['ui']['font_family'], 16, "bold"),
                                   justify='center')
-    entry_correct_count.pack(pady=2)
+    entry_correct_count.pack(fill="x", padx=15, pady=(2, 6))
     entry_correct_count.bind("<Return>", calculate_score)
     
-    ttk.Button(score_card, text="💯 Tính Điểm", 
-              command=calculate_score, width=14).pack(fill="x", pady=(4, 8))
+    ctk.CTkButton(score_card, text="Tính Điểm", height=36,
+              command=calculate_score).pack(fill="x", padx=15, pady=(4, 15))
     
-    ttk.Label(score_card, text="🎯 Hoặc Nhập Điểm:", 
-             font=(config['ui']['font_family'], 9)).pack()
-    entry_direct_score = ttk.Entry(score_card, width=14,
-                               font=(config['ui']['font_family'], 11),
+    # Nhập điểm trực tiếp
+    ctk.CTkLabel(score_card, text="Nhập điểm trực tiếp", font=(config['ui']['font_family'], 12)).pack(anchor="w", padx=15)
+    entry_direct_score = ctk.CTkEntry(score_card, height=36,
+                               font=(config['ui']['font_family'], 16, "bold"),
                                justify='center')
-    entry_direct_score.pack(pady=2)
+    entry_direct_score.pack(fill="x", padx=15, pady=(2, 6))
     entry_direct_score.bind("<Return>", calculate_score_direct)
     
-    ttk.Button(score_card, text="✓ Lưu Điểm", 
-              command=calculate_score_direct, style='Success.TButton', width=14).pack(fill="x", pady=(4, 0))
+    ctk.CTkButton(score_card, text="Lưu Điểm", height=36, fg_color=config['ui']['theme']['success'], hover_color="#276749",
+              command=calculate_score_direct).pack(fill="x", padx=15, pady=(4, 15))
     
-    ttk.Label(score_card, text="⌨️ Ctrl+G / Ctrl+D", 
-             font=(config['ui']['font_family'], 8),
-             foreground=config['ui']['theme']['text_secondary']).pack(pady=(4, 0))
+    # ── Thống kê ──
+    stats_card = ctk.CTkFrame(scrollable_right_frame, fg_color=config['ui']['theme']['card'], corner_radius=8)
+    stats_card.pack(fill="x", pady=(0, 10))
+    
+    ctk.CTkLabel(stats_card, text="Thống Kê", font=(config['ui']['font_family'], 14, "bold"), text_color=config['ui']['theme']['primary']).pack(anchor="w", padx=15, pady=(10, 5))
+    
+    progress_frame = ctk.CTkFrame(stats_card, fg_color="transparent")
+    progress_frame.pack(fill="x", padx=15, pady=(0, 6))
+    
+    ctk.CTkLabel(progress_frame, text="Tiến độ nhập điểm", 
+             font=(config['ui']['font_family'], 12)).pack(anchor="w")
+    progress_bar = ctk.CTkProgressBar(progress_frame)
+    progress_bar.pack(fill="x", pady=(4, 4))
+    progress_bar.set(0)
+    progress_label = ctk.CTkLabel(progress_frame, text="0%", 
+                              font=(config['ui']['font_family'], 12, 'bold'),
+                              text_color=config['ui']['theme']['primary'])
+    progress_label.pack(anchor="w")
+    
+    stats_label = ctk.CTkLabel(stats_card, text="0/0 có điểm", 
+                          font=(config['ui']['font_family'], 14, 'bold'))
+    stats_label.pack(pady=4)
+    
+    category_frame = ctk.CTkFrame(stats_card, fg_color="transparent")
+    category_frame.pack(fill="x", padx=15, pady=(4, 15))
+    
+    high_score_count = ctk.CTkLabel(category_frame, text=" Giỏi (≥7): 0 ", font=(config['ui']['font_family'], 12, "bold"), fg_color="#022c22", text_color="#34d399", corner_radius=6)
+    high_score_count.pack(anchor="w", pady=2)
+    
+    medium_score_count = ctk.CTkLabel(category_frame, text=" Khá (5-7): 0 ", font=(config['ui']['font_family'], 12, "bold"), fg_color="#451a03", text_color="#fbbf24", corner_radius=6)
+    medium_score_count.pack(anchor="w", pady=2)
+    
+    low_score_count = ctk.CTkLabel(category_frame, text=" Yếu (<5): 0 ", font=(config['ui']['font_family'], 12, "bold"), fg_color="#450a0a", text_color="#f87171", corner_radius=6)
+    low_score_count.pack(anchor="w", pady=2)
+    
+    no_score_count = ctk.CTkLabel(category_frame, text=" Chưa có điểm: 0 ", font=(config['ui']['font_family'], 12), fg_color="#1f2937", text_color="#ffffff", corner_radius=6)
+    no_score_count.pack(anchor="w", pady=2)
+    
+    highest_score_label = ctk.CTkLabel(stats_card, text="Cao nhất: N/A", font=(config['ui']['font_family'], 12))
+    highest_score_label.pack(anchor="w", padx=15, pady=1)
+    
+    lowest_score_label = ctk.CTkLabel(stats_card, text="Thấp nhất: N/A", font=(config['ui']['font_family'], 12))
+    lowest_score_label.pack(anchor="w", padx=15, pady=(1, 15))
+    
+    # ── Quản lý File ──
+    file_card = ctk.CTkFrame(scrollable_right_frame, fg_color=config['ui']['theme']['card'], corner_radius=8)
+    file_card.pack(fill="x", pady=(0, 10))
+    
+    ctk.CTkLabel(file_card, text="Quản lý File", font=(config['ui']['font_family'], 14, "bold"), text_color=config['ui']['theme']['primary']).pack(anchor="w", padx=15, pady=(10, 5))
+    
+    ctk.CTkButton(file_card, text="Mở File", height=32, command=select_file).pack(fill="x", padx=15, pady=(2, 6))
+    ctk.CTkButton(file_card, text="Sao Lưu", height=32, command=backup_data).pack(fill="x", padx=15, pady=(2, 6))
+    ctk.CTkButton(file_card, text="Xuất Báo Cáo", height=32, command=generate_report, fg_color="#4A5568", hover_color="#2D3748").pack(fill="x", padx=15, pady=(2, 15))
     
     # Menu
     menubar = tk.Menu(root, 
@@ -2876,7 +3162,7 @@ def create_ui():
                      activebackground=config['ui']['theme']['primary'],
                      activeforeground='white',
                      borderwidth=0)
-    root.config(menu=menubar)
+    root.configure(menu=menubar)
     
     settings_menu = tk.Menu(menubar, tearoff=0,
                            background=config['ui']['theme']['card'],
@@ -2887,6 +3173,7 @@ def create_ui():
     settings_menu.add_command(label="⌨️ Phím tắt", command=customize_shortcuts)
     settings_menu.add_command(label="🔢 Mã đề", command=customize_exam_codes)
     settings_menu.add_command(label="📝 Tên cột", command=customize_columns)
+    settings_menu.add_command(label="📊 Đọc Excel", command=customize_excel_reading)
     settings_menu.add_command(label="🔒 Bảo mật", command=customize_security)
     settings_menu.add_separator()
     settings_menu.add_command(label="📡 Kênh cập nhật", command=choose_update_channel)
@@ -2994,11 +3281,11 @@ Xem thêm thông tin và cập nhật mới nhất tại GitHub.
     
     scroll = ttk.Scrollbar(text_frame, command=about_text_widget.yview)
     scroll.pack(side="right", fill="y")
-    about_text_widget.config(yscrollcommand=scroll.set)
+    about_text_widget.configure(yscrollcommand=scroll.set)
     
     # Chèn text
     about_text_widget.insert("1.0", about_text)
-    about_text_widget.config(state="disabled")  # Không cho phép chỉnh sửa
+    about_text_widget.configure(state="disabled")  # Không cho phép chỉnh sửa
     
     # Thêm nút kiểm tra cập nhật
     button_frame = ttk.Frame(about_window)
@@ -3044,24 +3331,39 @@ def check_updates_async():
     print("import_score: Đã gọi check_updates_async từ module")
 
 def update_stats():
-    """Cập nhật các thống kê cơ bản với progress bar và phân loại chi tiết"""
-    global progress_bar, progress_label, high_score_count, medium_score_count, low_score_count, no_score_count
+    """Cập nhật các thống kê cơ bản với progress bar và phân loại chi tiết, sử dụng cache"""
+    global progress_bar, progress_label, high_score_count, medium_score_count, low_score_count, no_score_count, _stats_cache
     
     if df is None or df.empty:
-        stats_label.config(text="Không có dữ liệu")
+        stats_label.configure(text="Không có dữ liệu")
         progress_bar['value'] = 0
-        progress_label.config(text="0%")
-        high_score_count.config(text="🟢 Giỏi (≥7): 0")
-        medium_score_count.config(text="🟡 Khá (5-7): 0")
-        low_score_count.config(text="🔴 Yếu (<5): 0")
-        no_score_count.config(text="⚪ Chưa có: 0")
+        progress_label.configure(text="0%")
+        high_score_count.configure(text=" Giỏi (≥7): 0 ")
+        medium_score_count.configure(text=" Khá (5-7): 0 ")
+        low_score_count.configure(text=" Yếu (<5): 0 ")
+        no_score_count.configure(text=" Chưa có điểm: 0 ")
         return
         
     total_students = len(df)
-    score_column = config['columns']['score']
+    score_column_config = config['columns']['score']
     
-    # Đếm số học sinh có điểm
-    students_with_scores = df[score_column].notna().sum()
+    # Tìm cột điểm thực tế trong DataFrame
+    score_column = find_matching_column(df, score_column_config)
+    
+    # Kiểm tra cột điểm có tồn tại không
+    if not score_column:
+        stats_label.configure(text=f"Không tìm thấy cột '{score_column_config}'")
+        progress_bar['value'] = 0
+        progress_label.configure(text="0%")
+        high_score_count.configure(text=" Giỏi (≥7): 0 ")
+        medium_score_count.configure(text=" Khá (5-7): 0 ")
+        low_score_count.configure(text=" Yếu (<5): 0 ")
+        no_score_count.configure(text=" Chưa có điểm: 0 ")
+        return
+    
+    # Get basic stats from cache
+    cached_stats = _stats_cache.get_stats(df)
+    students_with_scores = cached_stats['scored']
     students_no_scores = total_students - students_with_scores
     
     # Tính phần trăm
@@ -3069,38 +3371,53 @@ def update_stats():
     
     # Cập nhật progress bar
     progress_bar['value'] = percentage
-    progress_label.config(text=f"{percentage:.1f}% ({students_with_scores}/{total_students})")
+    progress_label.configure(text=f"{percentage:.1f}% ({students_with_scores}/{total_students})")
     
     # Phân loại theo điểm
-    df_with_scores = df[df[score_column].notna()]
+    df_with_scores = df[df[score_column].notna()].copy()
+    # Chuyển đổi cột điểm sang dạng số, các giá trị không hợp lệ sẽ thành NaN
+    df_with_scores[score_column] = pd.to_numeric(df_with_scores[score_column], errors='coerce')
+    # Loại bỏ các giá trị NaN sau khi chuyển đổi
+    df_with_scores = df_with_scores[df_with_scores[score_column].notna()]
+    
     high_count = len(df_with_scores[df_with_scores[score_column] >= 7])
     medium_count = len(df_with_scores[(df_with_scores[score_column] >= 5) & (df_with_scores[score_column] < 7)])
     low_count = len(df_with_scores[df_with_scores[score_column] < 5])
     
     # Cập nhật labels
-    stats_label.config(text=f"{students_with_scores}/{total_students} đã có điểm")
-    high_score_count.config(text=f"🟢 Giỏi (≥7): {high_count} ({high_count/total_students*100:.1f}%)" if total_students > 0 else "🟢 Giỏi (≥7): 0")
-    medium_score_count.config(text=f"🟡 Khá (5-7): {medium_count} ({medium_count/total_students*100:.1f}%)" if total_students > 0 else "🟡 Khá (5-7): 0")
-    low_score_count.config(text=f"🔴 Yếu (<5): {low_count} ({low_count/total_students*100:.1f}%)" if total_students > 0 else "🔴 Yếu (<5): 0")
-    no_score_count.config(text=f"⚪ Chưa có: {students_no_scores} ({students_no_scores/total_students*100:.1f}%)" if total_students > 0 else "⚪ Chưa có: 0")
+    stats_label.configure(text=f"{students_with_scores}/{total_students} đã có điểm")
+    high_score_count.configure(text=f" Giỏi (≥7): {high_count} ({high_count/total_students*100:.1f}%)" if total_students > 0 else " Giỏi (≥7): 0 ")
+    medium_score_count.configure(text=f" Khá (5-7): {medium_count} ({medium_count/total_students*100:.1f}%)" if total_students > 0 else " Khá (5-7): 0 ")
+    low_score_count.configure(text=f" Yếu (<5): {low_count} ({low_count/total_students*100:.1f}%)" if total_students > 0 else " Yếu (<5): 0 ")
+    no_score_count.configure(text=f" Chưa có điểm: {students_no_scores} ({students_no_scores/total_students*100:.1f}%)" if total_students > 0 else " Chưa có điểm: 0 ")
 
 def update_score_extremes():
     """Cập nhật điểm cao nhất và thấp nhất"""
     if df is None or df.empty:
-        highest_score_label.config(text="🏆 Cao nhất: N/A")
-        lowest_score_label.config(text="📉 Thấp nhất: N/A")
+        highest_score_label.configure(text="🏆 Cao nhất: N/A")
+        lowest_score_label.configure(text="📉 Thấp nhất: N/A")
         return
         
-    score_column = config['columns']['score']
-    name_column = config['columns']['name']
+    score_column = find_matching_column(df, config['columns']['score'])
+    name_column = find_matching_column(df, config['columns']['name'])
+    
+    # Kiểm tra cột điểm có tồn tại không
+    if not score_column or not name_column:
+        highest_score_label.configure(text="🏆 Cao nhất: N/A")
+        lowest_score_label.configure(text="📉 Thấp nhất: N/A")
+        return
     
     # Lọc các hàng có điểm không phải NaN
-    df_with_scores = df[df[score_column].notna()]
+    df_with_scores = df[df[score_column].notna()].copy()
+    # Chuyển đổi cột điểm sang dạng số
+    df_with_scores[score_column] = pd.to_numeric(df_with_scores[score_column], errors='coerce')
+    # Loại bỏ các giá trị NaN sau khi chuyển đổi
+    df_with_scores = df_with_scores[df_with_scores[score_column].notna()]
     
     # Nếu không có ai có điểm
     if df_with_scores.empty:
-        highest_score_label.config(text="🏆 Cao nhất: N/A")
-        lowest_score_label.config(text="📉 Thấp nhất: N/A")
+        highest_score_label.configure(text="🏆 Cao nhất: N/A")
+        lowest_score_label.configure(text="📉 Thấp nhất: N/A")
         return
     
     # Tìm điểm cao nhất
@@ -3118,8 +3435,8 @@ def update_score_extremes():
         min_students_text += f" +{len(min_students) - 2}"
     
     # Cập nhật giao diện
-    highest_score_label.config(text=f"🏆 Cao nhất: {max_score:.2f} ({max_students_text})")
-    lowest_score_label.config(text=f"📉 Thấp nhất: {min_score:.2f} ({min_students_text})")
+    highest_score_label.configure(text=f"🏆 Cao nhất: {max_score:.2f} ({max_students_text})")
+    lowest_score_label.configure(text=f"📉 Thấp nhất: {min_score:.2f} ({min_students_text})")
 
 def delayed_search(event=None):
     """Tìm kiếm sau một khoảng thời gian để tránh quá nhiều tìm kiếm liên tiếp"""
@@ -3133,7 +3450,7 @@ def delayed_search(event=None):
     search_timer_id = root.after(300, search_student)  # 300ms delay
 
 def generate_report():
-    """Tạo báo cáo PDF với thống kê và biểu đồ phân phối điểm"""
+    """Tạo báo cáo PDF chuyên nghiệp với thiết kế hiện đại và căn chỉnh đồng bộ"""
     global df
     
     if df is None or df.empty:
@@ -3144,283 +3461,213 @@ def generate_report():
         messagebox.showwarning("Thông báo", "Không tìm thấy cột điểm trong dữ liệu")
         return
         
-    # Lọc chỉ lấy học sinh có điểm
+    # Lấy thông tin thống kê giống UI
     scores_df = df[df['Điểm'].notna()].copy()
-    
     if len(scores_df) == 0:
-        messagebox.showwarning("Thông báo", "Chưa có học sinh nào có điểm")
+        messagebox.showwarning("Thông báo", "Chưa có học sinh nào có điểm để làm báo cáo")
         return
     
     try:
-        # Hỏi nơi lưu file báo cáo
         file_path = filedialog.asksaveasfilename(
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf")],
-            title="Lưu báo cáo PDF"
+            title="Lưu báo cáo PDF Chuyên Nghiệp"
         )
-        
-        if not file_path:
-            return  # Người dùng hủy
-            
-        # Tạo cửa sổ hiển thị tiến trình tạo báo cáo
+        if not file_path: return
+
+        # Giao diện tiến trình
         progress_window = tk.Toplevel(root)
-        progress_window.title("Đang tạo báo cáo PDF")
-        progress_window.geometry("450x200")
-        progress_window.transient(root)  # Đặt là cửa sổ con của root
+        progress_window.title("Hệ thống báo cáo")
+        progress_window.geometry("450x220")
+        ui_utils.center_window(progress_window, 450, 220)
+        progress_window.transient(root)
         
-        # Đặt cửa sổ ở giữa màn hình
-        window_width = 450
-        window_height = 200
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-        position_x = int(screen_width/2 - window_width/2)
-        position_y = int(screen_height/2 - window_height/2)
-        progress_window.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
-        
-        # Ngăn không cho đóng cửa sổ tiến trình
-        progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
-        
-        # Thiết lập màu nền
-        progress_frame = ttk.Frame(progress_window, padding=15)
+        progress_frame = ttk.Frame(progress_window, padding=20)
         progress_frame.pack(fill="both", expand=True)
         
-        # Label hiển thị thông tin
-        ttk.Label(progress_frame, 
-               text="Đang tạo báo cáo PDF...",
-               font=(config['ui']['font_family'], 12, 'bold'),
-               foreground=config['ui']['theme']['primary']).pack(pady=5)
-        
-        # Frame chứa thông tin chi tiết
-        info_frame = ttk.Frame(progress_frame)
-        info_frame.pack(fill="x", pady=5)
-        
-        # Label hiển thị tên file
-        file_label = ttk.Label(info_frame, 
-                            text=f"File: {os.path.basename(file_path)}",
-                            font=(config['ui']['font_family'], 10))
-        file_label.pack(anchor="w", pady=2)
-        
-        # Label hiển thị số lượng học sinh
-        students_label = ttk.Label(info_frame, 
-                               text=f"Tổng số học sinh: {len(df)}, Có điểm: {len(scores_df)}",
-                               font=(config['ui']['font_family'], 10))
-        students_label.pack(anchor="w", pady=2)
-        
-        # Tạo style cho thanh tiến trình
-        style = ttk.Style()
-        style.configure("PDF.Horizontal.TProgressbar", 
-                      troughcolor=config['ui']['theme']['background'],
-                      background=config['ui']['theme']['primary'],
-                      thickness=15)
-        
-        # Thanh tiến trình
-        progress = ttk.Progressbar(progress_frame, 
-                                orient="horizontal", 
-                                length=400, 
-                                mode="determinate",
-)
+        ttk.Label(progress_frame, text="ĐANG KHỞI TẠO BÁO CÁO", 
+                 font=(config['ui']['font_family'], 12, 'bold')).pack(pady=(0, 10))
+                 
+        progress = ttk.Progressbar(progress_frame, orient="horizontal", length=400, mode="determinate")
         progress.pack(pady=10, fill="x")
         
-        # Label hiển thị trạng thái
-        status_label_progress = ttk.Label(progress_frame, 
-                                      text="Đang chuẩn bị dữ liệu...", 
-                                      font=(config['ui']['font_family'], 10))
-        status_label_progress.pack(pady=5)
-        
-        # Cập nhật giao diện trước khi bắt đầu
-        progress_window.update()
-        
-        # Hàm cập nhật tiến trình
-        def update_progress(value, message):
-            progress["value"] = value
-            status_label_progress.config(text=message)
-            progress_window.update_idletasks()
-        
-        # Hiển thị thông báo đang tạo báo cáo
-        status_label.config(text="Đang tạo báo cáo PDF...")
-        root.update()
-        
-        # Tạo tệp PDF
-        update_progress(10, "Đang chuẩn bị dữ liệu...")
-        
+        status_label_progress = ttk.Label(progress_frame, text="Đang chuẩn bị...")
+        status_label_progress.pack()
+
+        def update_p(val, msg):
+            progress["value"] = val
+            status_label_progress.configure(text=msg)
+            progress_window.update()
+
+        # THIẾT LẬP MÀU SẮC (Indigo Theme)
+        COLOR_PRIMARY = "#5A67D8"  # Indigo
+        COLOR_SUCCESS = "#38A169"  # Green
+        COLOR_WARNING = "#DD6B20"  # Orange
+        COLOR_DANGER = "#E53E3E"   # Red
+        COLOR_TEXT = "#2D3748"
+        COLOR_BG_LIGHT = "#F7FAFC"
+
+        # TẾP PDF CHÍNH
         with PdfPages(file_path) as pdf:
-            # Trang 1: Thông tin chung
-            update_progress(20, "Đang tạo trang thống kê chung...")
-            plt.figure(figsize=(10, 12))
-            plt.axis('off')
+            # --- TRANG 1: THỐNG KÊ TỔNG QUAN ---
+            update_p(20, "Đang thiết kế trang tổng quan...")
+            fig = plt.figure(figsize=(8.27, 11.69)) # A4 size
             
-            # Tiêu đề báo cáo
-            title_text = f"BÁO CÁO THỐNG KÊ ĐIỂM SỐ"
-            subtitle_text = f"Ngày tạo: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+            # 1. Header Bar
+            plt.fill_between([0, 1], 0.92, 1.0, color=COLOR_PRIMARY, transform=fig.transFigure)
+            plt.text(0.5, 0.96, "BÁO CÁO KẾT QUẢ HỌC TẬP", color='white', 
+                    fontsize=18, fontweight='bold', ha='center', transform=fig.transFigure)
+            plt.text(0.5, 0.935, f"Ngày xuất bản: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 
+                    color='white', fontsize=10, ha='center', transform=fig.transFigure)
+
+            # 2. Metrics Cards (Metric Boxes)
+            avg_score = scores_df['Điểm'].mean()
+            max_score = scores_df['Điểm'].max()
+            min_score = scores_df['Điểm'].min()
             
-            plt.text(0.5, 0.98, title_text, fontsize=16, ha='center', va='top', fontweight='bold')
-            plt.text(0.5, 0.95, subtitle_text, fontsize=12, ha='center', va='top')
-            
-            # Thông tin cơ bản
-            info_text = [
-                f"Tổng số học sinh: {len(df)}",
-                f"Học sinh có điểm: {len(scores_df)} ({len(scores_df)/len(df):.1%})",
-                f"Điểm trung bình: {scores_df['Điểm'].mean():.2f}",
-                f"Điểm cao nhất: {scores_df['Điểm'].max():.2f}",
-                f"Điểm thấp nhất: {scores_df['Điểm'].min():.2f}",
-                f"Độ lệch chuẩn: {scores_df['Điểm'].std():.2f}"
+            # Vẽ các ô tóm tắt
+            metrics = [
+                ("TRUNG BÌNH", f"{avg_score:.2f}", COLOR_PRIMARY),
+                ("CAO NHẤT", f"{max_score:.2f}", COLOR_SUCCESS),
+                ("THẤP NHẤT", f"{min_score:.2f}", COLOR_DANGER)
             ]
             
-            plt.text(0.1, 0.9, "Tổng quan:", fontsize=14, va='top', fontweight='bold')
-            y_pos = 0.85
-            for info in info_text:
-                plt.text(0.1, y_pos, info, fontsize=12, va='top')
-                y_pos -= 0.03
+            for i, (label, val, color) in enumerate(metrics):
+                x_pos = 0.15 + i * 0.28
+                rect = plt.Rectangle((x_pos, 0.82), 0.22, 0.07, color=COLOR_BG_LIGHT, 
+                                     transform=fig.transFigure, zorder=0)
+                fig.patches.append(rect)
+                plt.text(x_pos + 0.11, 0.865, label, fontsize=9, fontweight='bold', 
+                        color=color, ha='center', transform=fig.transFigure)
+                plt.text(x_pos + 0.11, 0.835, val, fontsize=16, fontweight='bold', 
+                        color=COLOR_TEXT, ha='center', transform=fig.transFigure)
+
+            # 3. Biểu đồ phân phối (Histogram + KDE)
+            update_p(40, "Đang vẽ biểu đồ thống kê...")
+            ax1 = fig.add_axes([0.1, 0.52, 0.8, 0.25])
+            n, bins, patches = ax1.hist(scores_df['Điểm'], bins=10, range=(0,10), 
+                                       color=COLOR_PRIMARY, alpha=0.6, rwidth=0.85)
+            ax1.set_title('Phân phối điểm số toàn lớp', fontsize=12, fontweight='bold', pad=15)
+            ax1.set_xlabel('Thang điểm', fontsize=10)
+            ax1.set_ylabel('Số lượng học sinh', fontsize=10)
+            ax1.spines['top'].set_visible(False)
+            ax1.spines['right'].set_visible(False)
+            ax1.grid(axis='y', linestyle='--', alpha=0.4)
             
-            update_progress(30, "Đang vẽ biểu đồ phân phối điểm...")
-            # Biểu đồ phân phối điểm
-            ax1 = plt.axes([0.1, 0.45, 0.8, 0.3])
-            scores_df['Điểm'].hist(ax=ax1, bins=10, alpha=0.7, color='blue', edgecolor='black')
-            ax1.set_title('Phân phối điểm số')
-            ax1.set_xlabel('Điểm')
-            ax1.set_ylabel('Số học sinh')
-            ax1.grid(True, alpha=0.3)
+            # 4. Biểu đồ tròn Phân loại
+            update_p(60, "Đang tính toán tỷ lệ xếp loại...")
+            ax2 = fig.add_axes([0.1, 0.15, 0.35, 0.25])
             
-            # Thêm đường trung bình
-            mean_score = scores_df['Điểm'].mean()
-            ax1.axvline(mean_score, color='red', linestyle='dashed', linewidth=1)
-            ax1.text(mean_score + 0.1, ax1.get_ylim()[1]*0.9, f'TB: {mean_score:.2f}', color='red')
+            gioi = len(scores_df[scores_df['Điểm'] >= 7])
+            kha = len(scores_df[(scores_df['Điểm'] >= 5) & (scores_df['Điểm'] < 7)])
+            yeu = len(scores_df[scores_df['Điểm'] < 5])
             
-            update_progress(40, "Đang vẽ biểu đồ tỷ lệ đạt/không đạt...")
-            # Biểu đồ tròn tỷ lệ đạt/không đạt
-            ax2 = plt.axes([0.1, 0.1, 0.35, 0.25])
-            pass_threshold = 5.0
-            passed = (scores_df['Điểm'] >= pass_threshold).sum()
-            failed = len(scores_df) - passed
+            labels = [f'Giỏi (≥7)\n{gioi} HS', f'Khá (5-7)\n{kha} HS', f'Yếu (<5)\n{yeu} HS']
+            sizes = [gioi, kha, yeu]
+            colors = [COLOR_SUCCESS, COLOR_WARNING, COLOR_DANGER]
             
-            labels = ['Đạt (≥ 5.0)', 'Không đạt (< 5.0)']
-            sizes = [passed, failed]
-            colors = ['#66b3ff', '#ff9999']
+            if sum(sizes) > 0:
+                ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', 
+                       startangle=140, pctdistance=0.75, wedgeprops={'edgecolor': 'white', 'linewidth': 2})
+                ax2.set_title('Tỷ lệ xếp loại học sinh', fontsize=11, fontweight='bold')
             
-            ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-            ax2.axis('equal')
-            ax2.set_title('Tỷ lệ học sinh đạt/không đạt')
-            
-            update_progress(50, "Đang tạo bảng học sinh điểm cao...")
-            # Bảng học sinh điểm cao nhất
-            ax3 = plt.axes([0.55, 0.05, 0.35, 0.3])
-            ax3.axis('tight')
+            # 5. Top 5 Vinh Danh
+            ax3 = fig.add_axes([0.55, 0.15, 0.35, 0.25])
             ax3.axis('off')
+            ax3.set_title('Top 5 Học sinh xuất sắc', fontsize=11, fontweight='bold', pad=10)
             
-            # Lấy 5 học sinh có điểm cao nhất
             name_col = config['columns']['name']
-            top_students = scores_df.sort_values('Điểm', ascending=False).head(5)
-            top_data = [[student, score] for student, score in 
-                       zip(top_students[name_col], top_students['Điểm'])]
+            top_5 = scores_df.sort_values('Điểm', ascending=False).head(5)
+            top_data = [[f"{i+1}. {r[name_col]}", f"{r['Điểm']:.2f}"] for i, r in enumerate(top_5.to_dict('records'))]
             
-            top_table = ax3.table(cellText=top_data, colLabels=[name_col, 'Điểm'],
-                              loc='center', cellLoc='center')
-            top_table.auto_set_font_size(False)
-            top_table.set_fontsize(10)
-            top_table.scale(1, 1.5)
+            table_top = ax3.table(cellText=top_data, colLabels=["Họ và Tên", "Điểm"], 
+                                 loc='center', cellLoc='left')
+            table_top.auto_set_font_size(False)
+            table_top.set_fontsize(9)
+            table_top.scale(1, 1.8)
+            # Style table top
+            for (row, col), cell in table_top.get_celld().items():
+                cell.set_edgecolor('#E2E8F0')
+                if row == 0: 
+                    cell.set_facecolor('#EDF2F7')
+                    cell.set_text_props(weight='bold')
+
+            # Footer Page 1
+            plt.text(0.5, 0.05, "Trang 1", fontsize=9, color='gray', ha='center', transform=fig.transFigure)
             
-            ax3.set_title('Học sinh điểm cao nhất')
+            pdf.savefig(fig)
+            plt.close(fig)
+
+            # --- TRANG 2+: DANH SÁCH CHI TIẾT ---
+            update_p(80, "Đang tạo danh sách chi tiết...")
+            sorted_all = df.sort_values(config['columns']['name'])
+            rows_per_page = 32
+            total_pages = (len(sorted_all)-1)//rows_per_page + 1
             
-            update_progress(60, "Đang lưu trang thống kê...")
-            pdf.savefig()
-            plt.close()
-            
-            # Trang 2: Danh sách điểm
-            update_progress(70, "Đang tạo danh sách điểm học sinh...")
-            plt.figure(figsize=(10, 12))
-            plt.axis('off')
-            
-            plt.text(0.5, 0.98, "DANH SÁCH ĐIỂM HỌC SINH", fontsize=16, ha='center', fontweight='bold')
-            
-            # Vẽ bảng điểm
-            ax = plt.axes([0.05, 0.05, 0.9, 0.85])
-            ax.axis('tight')
-            ax.axis('off')
-            
-            # Số học sinh tối đa hiển thị trên một trang
-            page_size = 40
-            name_col = config['columns']['name']
-            exam_code_col = 'Mã đề' if 'Mã đề' in scores_df.columns else None
-            
-            # Nếu có mã đề thì hiển thị
-            if exam_code_col:
-                sorted_df = scores_df.sort_values(name_col)
-                table_data = [[student, exam_code, score] for student, exam_code, score in 
-                             zip(sorted_df[name_col][:page_size], 
-                                 sorted_df[exam_code_col][:page_size], 
-                                 sorted_df['Điểm'][:page_size])]
-                col_labels = [name_col, exam_code_col, 'Điểm']
-            else:
-                sorted_df = scores_df.sort_values(name_col)
-                table_data = [[student, score] for student, score in 
-                             zip(sorted_df[name_col][:page_size], 
-                                 sorted_df['Điểm'][:page_size])]
-                col_labels = [name_col, 'Điểm']
-            
-            table = ax.table(cellText=table_data, colLabels=col_labels,
-                          loc='center', cellLoc='center')
-            table.auto_set_font_size(False)
-            table.set_fontsize(9)
-            table.scale(1, 1.2)
-            
-            update_progress(80, "Đang lưu danh sách điểm...")
-            pdf.savefig()
-            plt.close()
-            
-            # Tạo thêm trang nếu số học sinh > page_size
-            if len(scores_df) > page_size:
-                pages_needed = (len(scores_df) - 1) // page_size + 1
-                progress_per_page = 19 / (pages_needed - 1) if pages_needed > 1 else 0
+            for p in range(total_pages):
+                update_p(80 + (p/total_pages)*20, f"Đang xuất danh sách trang {p+1}/{total_pages}...")
+                fig_list = plt.figure(figsize=(8.27, 11.69))
+                plt.axis('off')
                 
-                for page in range(1, pages_needed):
-                    update_progress(80 + page * progress_per_page, f"Đang tạo trang danh sách {page+1}/{pages_needed}...")
-                    plt.figure(figsize=(10, 12))
-                    plt.axis('off')
+                # Header trang phụ
+                plt.fill_between([0, 1], 0.95, 1.0, color=COLOR_PRIMARY, transform=fig_list.transFigure)
+                plt.text(0.1, 0.97, "DANH SÁCH CHI TIẾT ĐIỂM SỐ", color='white', 
+                        fontsize=12, fontweight='bold', transform=fig_list.transFigure)
+                
+                ax_list = fig_list.add_axes([0.05, 0.08, 0.9, 0.85])
+                ax_list.axis('off')
+                
+                start_r = p * rows_per_page
+                end_r = min((p+1) * rows_per_page, len(sorted_all))
+                page_df = sorted_all.iloc[start_r:end_r]
+                
+                # Chuẩn bị data cho bảng
+                col_name = config['columns']['name']
+                col_exam = 'Mã đề' if 'Mã đề' in page_df.columns else None
+                
+                headers = ["STT", "Họ và Tên", "Mã đề", "Điểm số"] if col_exam else ["STT", "Họ và Tên", "Điểm số"]
+                data_rows = []
+                for i, (_, row) in enumerate(page_df.iterrows()):
+                    score_val = f"{row['Điểm']:.2f}" if pd.notna(row['Điểm']) else "Chưa có"
+                    row_data = [start_r + i + 1, row[col_name]]
+                    if col_exam: row_data.append(row['Mã đề'] if pd.notna(row['Mã đề']) else "-")
+                    row_data.append(score_val)
+                    data_rows.append(row_data)
+                
+                table_list = ax_list.table(cellText=data_rows, colLabels=headers, loc='upper center', cellLoc='center')
+                table_list.auto_set_font_size(False)
+                table_list.set_fontsize(9)
+                table_list.scale(1, 1.8)
+                
+                # Định dạng bảng: Zebra stripes và Header đậm
+                for (row, col), cell in table_list.get_celld().items():
+                    cell.set_edgecolor('#CBD5E0')
+                    cell.set_linewidth(0.5)
+                    if row == 0:
+                        cell.set_facecolor(COLOR_PRIMARY)
+                        cell.set_text_props(color='white', weight='bold')
+                    elif row % 2 == 0:
+                        cell.set_facecolor('#F7FAFC')
                     
-                    plt.text(0.5, 0.98, f"DANH SÁCH ĐIỂM HỌC SINH (trang {page+1}/{pages_needed})", 
-                          fontsize=16, ha='center', fontweight='bold')
-                    
-                    ax = plt.axes([0.05, 0.05, 0.9, 0.85])
-                    ax.axis('tight')
-                    ax.axis('off')
-                    
-                    start_idx = page * page_size
-                    end_idx = min((page + 1) * page_size, len(scores_df))
-                    
-                    if exam_code_col:
-                        table_data = [[student, exam_code, score] for student, exam_code, score in 
-                                     zip(sorted_df[name_col][start_idx:end_idx], 
-                                         sorted_df[exam_code_col][start_idx:end_idx], 
-                                         sorted_df['Điểm'][start_idx:end_idx])]
-                    else:
-                        table_data = [[student, score] for student, score in 
-                                     zip(sorted_df[name_col][start_idx:end_idx], 
-                                         sorted_df['Điểm'][start_idx:end_idx])]
-                    
-                    table = ax.table(cellText=table_data, colLabels=col_labels,
-                                  loc='center', cellLoc='center')
-                    table.auto_set_font_size(False)
-                    table.set_fontsize(9)
-                    table.scale(1, 1.2)
-                    
-                    pdf.savefig()
-                    plt.close()
-            
-            update_progress(100, "Hoàn tất tạo báo cáo!")
+                    # Căn trái cho cột tên
+                    if col == 1: cell.set_text_props(ha='left')
+
+                plt.text(0.5, 0.04, f"Trang {p+2} / {total_pages+1}", fontsize=9, color='gray', ha='center', transform=fig_list.transFigure)
+                
+                pdf.savefig(fig_list)
+                plt.close(fig_list)
         
-        # Đóng cửa sổ tiến trình sau 1 giây
+        # Kết thúc
+        update_p(100, "HOÀN TẤT!")
         progress_window.after(1000, progress_window.destroy)
         
-        status_label.config(text=f"Đã tạo báo cáo PDF: {os.path.basename(file_path)}", 
-)
-        ToastNotification.show(f"✅ Đã tạo báo cáo PDF tại:\n{file_path}", "success")
+        status_label.configure(text=f"Báo cáo sẵn sàng: {os.path.basename(file_path)}")
+        ToastNotification.show(f"✅ Báo cáo chuyên nghiệp đã được xuất!\nLưu tại: {file_path}", "success")
         
     except Exception as e:
-        status_label.config(text=f"Lỗi tạo báo cáo: {str(e)}", 
-)
+        status_label.configure(text="Lỗi xuất báo cáo!")
         messagebox.showerror("Lỗi", f"Không thể tạo báo cáo PDF: {str(e)}")
         traceback.print_exc()
-
 def show_score_distribution():
     """Hiển thị biểu đồ phân phối điểm số"""
     global df
@@ -3572,41 +3819,310 @@ def focus_correct_count(event=None):
     entry_correct_count.focus_set()
     entry_correct_count.select_range(0, tk.END)
 
-def find_header_row(headers_df):
-    """Tìm hàng chứa header thực sự trong DataFrame."""
-    header_row = None
-    for i in range(len(headers_df)):
-        row_values = headers_df.iloc[i].astype(str)
-        if any(name.lower() in ' '.join(row_values.str.lower()) 
-              for name in ['họ và tên', 'tên học sinh', 'học sinh']):
-            header_row = i
-            break
-    
-    # Nếu không tìm thấy header phù hợp, dùng hàng đầu tiên
-    if header_row is None:
-        header_row = 0
-    
-    return header_row
+def detect_merged_cells_structure(file_path, config):
+    """
+    Phát hiện cấu trúc merged cells từ Excel file
+    Returns: dict với thông tin về merged cells và multi-level headers
+    """
+    try:
+        if not config.get('excel_reading', {}).get('merged_cell_handling', {}).get('enabled', True):
+            return None
+        
+        # Không dùng read_only mode để có thể access merged_cells
+        wb = load_workbook(file_path, data_only=True)
+        ws = wb.active
+        
+        merged_ranges = list(ws.merged_cells.ranges)
+        
+        if not merged_ranges:
+            wb.close()
+            return None
+        
+        # Parse merged cell info
+        merged_info = {}
+        for merged_range in merged_ranges:
+            min_col, min_row, max_col, max_row = merged_range.bounds
+            # Lưu thông tin: cell nào được merge với cells nào
+            for row in range(min_row, max_row + 1):
+                for col in range(min_col, max_col + 1):
+                    merged_info[(row, col)] = {
+                        'parent': (min_row, min_col),
+                        'is_parent': (row == min_row and col == min_col),
+                        'bounds': (min_row, min_col, max_row, max_col)
+                    }
+        
+        wb.close()
+        return merged_info
+        
+    except Exception as e:
+        print(f"Error detecting merged cells: {e}")
+        return None
+
+
+def combine_multi_level_headers(df_headers, merged_info, config):
+    """
+    Kết hợp multi-level headers thành tên cột đầy đủ
+    df_headers: DataFrame chứa các dòng header
+    merged_info: dict thông tin về merged cells
+    """
+    try:
+        separator = config.get('excel_reading', {}).get('header_detection', {}).get('merge_separator', '_')
+        
+        if df_headers.shape[0] == 1:
+            # Chỉ có 1 dòng header, không cần combine
+            return list(df_headers.iloc[0])
+        
+        combined_headers = []
+        num_cols = df_headers.shape[1]
+        
+        for col_idx in range(num_cols):
+            col_parts = []
+            
+            for row_idx in range(df_headers.shape[0]):
+                value = df_headers.iloc[row_idx, col_idx]
+                
+                # Skip NaN và empty values
+                if pd.notna(value) and str(value).strip():
+                    col_parts.append(str(value).strip())
+            
+            # Kết hợp các phần với separator
+            if col_parts:
+                combined_name = separator.join(col_parts)
+                combined_headers.append(combined_name)
+            else:
+                combined_headers.append(f"Column_{col_idx}")
+        
+        return combined_headers
+        
+    except Exception as e:
+        print(f"Error combining headers: {e}")
+        return list(df_headers.iloc[0]) if len(df_headers) > 0 else []
+
+
+def match_column_pattern(column_name, config):
+    """
+    Match column name với patterns trong config
+    Returns: dict với thông tin về pattern matched hoặc None
+    """
+    try:
+        patterns_config = config.get('excel_reading', {}).get('column_patterns', {})
+        column_name_lower = str(column_name).lower().strip()
+        
+        # Check student info patterns
+        for field_name, field_config in patterns_config.get('student_info', {}).items():
+            # Try exact patterns first
+            patterns = field_config.get('patterns', [])
+            for pattern in patterns:
+                if pattern.lower() in column_name_lower or column_name_lower in pattern.lower():
+                    return {
+                        'type': 'student_info',
+                        'field': field_name,
+                        'matched_pattern': pattern,
+                        'required': field_config.get('required', False)
+                    }
+            
+            # Try regex
+            regex = field_config.get('regex', '')
+            if regex:
+                try:
+                    if re.match(regex, column_name, re.IGNORECASE):
+                        return {
+                            'type': 'student_info',
+                            'field': field_name,
+                            'matched_pattern': regex,
+                            'required': field_config.get('required', False)
+                        }
+                except:
+                    pass
+        
+        # Check score columns patterns
+        for score_type, score_config in patterns_config.get('score_columns', {}).items():
+            patterns = score_config.get('patterns', [])
+            for pattern in patterns:
+                if pattern.lower() in column_name_lower or column_name_lower in pattern.lower():
+                    return {
+                        'type': 'score',
+                        'score_type': score_type,
+                        'matched_pattern': pattern,
+                        'has_sub_columns': score_config.get('has_sub_columns', False),
+                        'description': score_config.get('description', '')
+                    }
+            
+            # Try regex
+            regex = score_config.get('regex', '')
+            if regex:
+                try:
+                    match = re.match(regex, column_name, re.IGNORECASE)
+                    if match:
+                        result = {
+                            'type': 'score',
+                            'score_type': score_type,
+                            'matched_pattern': regex,
+                            'has_sub_columns': score_config.get('has_sub_columns', False),
+                            'description': score_config.get('description', '')
+                        }
+                        # Extract sub-column number if exists
+                        if match.groups():
+                            result['sub_column'] = match.group(len(match.groups()))
+                        return result
+                except:
+                    pass
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error matching column pattern: {e}")
+        return None
+
+
+def score_header_row(row_data, config):
+    """
+    Tính điểm cho một dòng dựa trên số lượng cột khớp với patterns
+    Returns: float score (cao hơn = nhiều khả năng là header)
+    """
+    try:
+        score = 0
+        patterns_config = config.get('excel_reading', {}).get('column_patterns', {})
+        
+        # Keywords để tìm trong header row
+        student_keywords = ['họ và tên', 'tên học sinh', 'tên', 'họ tên', 'học sinh', 
+                           'mã số', 'mssv', 'mã định danh', 'stt', 'số tt']
+        score_keywords = ['điểm', 'đđgtx', 'đđggk', 'đđgck', 'đtb', 'score', 'tx', 'gk', 'ck']
+        other_keywords = ['ngày sinh', 'giới tính', 'phái', 'lớp', 'khối']
+        
+        row_str = ' '.join([str(val).lower() for val in row_data if pd.notna(val)])
+        
+        # Điểm cho student info keywords
+        for keyword in student_keywords:
+            if keyword in row_str:
+                score += 3
+        
+        # Điểm cho score keywords
+        for keyword in score_keywords:
+            if keyword in row_str:
+                score += 2
+        
+        # Điểm cho other keywords
+        for keyword in other_keywords:
+            if keyword in row_str:
+                score += 1
+        
+        # Bonus nếu có nhiều cột không trống
+        non_empty_cols = sum(1 for val in row_data if pd.notna(val) and str(val).strip())
+        score += non_empty_cols * 0.5
+        
+        return score
+        
+    except Exception as e:
+        print(f"Error scoring header row: {e}")
+        return 0
+
+
+def find_header_row(headers_df, config=None):
+    """Tìm hàng chứa header thực sự trong DataFrame với scoring mechanism."""
+    try:
+        if config is None:
+            # Fallback to old simple logic
+            header_row = None
+            for i in range(len(headers_df)):
+                row_values = headers_df.iloc[i].astype(str)
+                if any(name.lower() in ' '.join(row_values.str.lower()) 
+                      for name in ['họ và tên', 'tên học sinh', 'học sinh']):
+                    header_row = i
+                    break
+            
+            if header_row is None:
+                header_row = 0
+            
+            return header_row
+        
+        # New scoring-based logic
+        max_score = 0
+        best_header_row = 0
+        min_columns_match = config.get('excel_reading', {}).get('header_detection', {}).get('min_columns_match', 3)
+        
+        for i in range(len(headers_df)):
+            row_data = headers_df.iloc[i]
+            score = score_header_row(row_data, config)
+            
+            if score > max_score:
+                max_score = score
+                best_header_row = i
+        
+        # Validate: dòng tiếp theo phải có data hợp lệ
+        validate = config.get('excel_reading', {}).get('header_detection', {}).get('validate_data_rows', True)
+        if validate and best_header_row < len(headers_df) - 1:
+            next_row = headers_df.iloc[best_header_row + 1]
+            # Check xem dòng tiếp theo có phải là data không
+            non_empty = sum(1 for val in next_row if pd.notna(val) and str(val).strip())
+            if non_empty < 2:  # Quá ít data, có thể không phải header đúng
+                # Try next row
+                if best_header_row + 1 < len(headers_df):
+                    best_header_row += 1
+        
+        return best_header_row
+        
+    except Exception as e:
+        print(f"Error finding header row: {e}")
+        return 0
+
 
 def read_excel_file(file_path):
-    """Đọc file Excel theo cách thông thường"""
-    status_label.config(text=f"Đang đọc file Excel...")
+    """Đọc file Excel theo cách thông thường với caching và merged cells support"""
+    global _df_cache
+    status_label.configure(text=f"Đang đọc file Excel...")
     root.update()
     
     try:
+        # Check cache trước
+        config = load_config()
+        enable_caching = config.get('excel_reading', {}).get('performance', {}).get('enable_caching', True)
+        
+        if enable_caching:
+            cached_df = _df_cache.get(file_path)
+            if cached_df is not None:
+                status_label.configure(text=f"Đã load file từ cache")
+                return cached_df
+        
+        # Đọc header với max_search_rows từ config
+        max_rows = config.get('excel_reading', {}).get('header_detection', {}).get('max_search_rows', 50)
+        
+        # Detect merged cells structure nếu enabled
+        merged_info = None
+        if config.get('excel_reading', {}).get('merged_cell_handling', {}).get('enabled', True):
+            merged_info = detect_merged_cells_structure(file_path, config)
+        
         # Thử đọc với engine openpyxl trước
-        headers_df = pd.read_excel(file_path, nrows=10, engine='openpyxl')
+        headers_df = pd.read_excel(file_path, nrows=max_rows, engine='openpyxl')
         
-        # Tìm hàng chứa header thực sự
-        header_row = find_header_row(headers_df)
+        # Tìm hàng chứa header thực sự với scoring
+        header_row = find_header_row(headers_df, config)
         
-        # Đọc lại với header đúng
-        df_result = pd.read_excel(file_path, header=header_row, engine='openpyxl')
+        # Check nếu có multi-level headers
+        multi_level = config.get('excel_reading', {}).get('header_detection', {}).get('multi_level_support', True)
+        if multi_level and merged_info and header_row < len(headers_df) - 1:
+            # Đọc thêm vài dòng sau header row để check multi-level
+            header_rows_to_read = min(3, len(headers_df) - header_row)
+            if header_rows_to_read > 1:
+                # Đọc với header là list các rows
+                df_result = pd.read_excel(file_path, header=list(range(header_row, header_row + header_rows_to_read)), engine='openpyxl')
+                # Combine multi-level headers
+                if isinstance(df_result.columns, pd.MultiIndex):
+                    # Flatten MultiIndex columns
+                    separator = config.get('excel_reading', {}).get('header_detection', {}).get('merge_separator', '_')
+                    df_result.columns = [separator.join(str(i) for i in col if str(i) != 'nan').strip(separator) 
+                                        for col in df_result.columns.values]
+            else:
+                # Đọc bình thường
+                df_result = pd.read_excel(file_path, header=header_row, engine='openpyxl')
+        else:
+            # Đọc lại với header đúng
+            df_result = pd.read_excel(file_path, header=header_row, engine='openpyxl')
         
         # Xử lý trường hợp DataFrame rỗng
         if df_result.empty:
-            status_label.config(text="File Excel không có dữ liệu")
-            return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+            status_label.configure(text="File Excel không có dữ liệu")
+            return pd.DataFrame()
         
         # Đảm bảo các cột cần thiết tồn tại
         df_result = ensure_required_columns(df_result)
@@ -3614,24 +4130,30 @@ def read_excel_file(file_path):
         # Đảm bảo kiểu dữ liệu phù hợp
         df_result = ensure_proper_dtypes(df_result)
         
-        status_label.config(text=f"Đã đọc xong file Excel")
+        # Cache result
+        if enable_caching:
+            _df_cache.set(file_path, df_result)
+        
+        status_label.configure(text=f"Đã đọc xong file Excel")
         return df_result
         
     except ImportError:
         # Nếu không có openpyxl, thử dùng engine mặc định
         print("Không tìm thấy openpyxl, sử dụng engine mặc định...")
-        headers_df = pd.read_excel(file_path, nrows=10)
+        config = load_config()
+        max_rows = config.get('excel_reading', {}).get('header_detection', {}).get('max_search_rows', 50)
+        headers_df = pd.read_excel(file_path, nrows=max_rows)
         
         # Tìm hàng chứa header thực sự
-        header_row = find_header_row(headers_df)
+        header_row = find_header_row(headers_df, config)
         
         # Đọc lại với header đúng
         df_result = pd.read_excel(file_path, header=header_row)
         
         # Xử lý trường hợp DataFrame rỗng
         if df_result.empty:
-            status_label.config(text="File Excel không có dữ liệu")
-            return pd.DataFrame()  # Trả về DataFrame rỗng thay vì None
+            status_label.configure(text="File Excel không có dữ liệu")
+            return pd.DataFrame()
         
         # Đảm bảo các cột cần thiết tồn tại
         df_result = ensure_required_columns(df_result)
@@ -3639,11 +4161,11 @@ def read_excel_file(file_path):
         # Đảm bảo kiểu dữ liệu phù hợp
         df_result = ensure_proper_dtypes(df_result)
         
-        status_label.config(text=f"Đã đọc xong file Excel")
+        status_label.configure(text=f"Đã đọc xong file Excel")
         return df_result
         
     except Exception as e:
-        status_label.config(text=f"Lỗi: {str(e)}")
+        status_label.configure(text=f"Lỗi: {str(e)}")
         messagebox.showerror("Lỗi", f"Không thể đọc file Excel: {str(e)}")
         traceback.print_exc()
         return pd.DataFrame()  # Trả về DataFrame rỗng khi có lỗi 
@@ -3668,7 +4190,7 @@ def choose_update_channel():
         
         def on_channel_changed(new_channel):
             # Cập nhật UI sau khi thay đổi kênh
-            status_label.config(text=f"Đã chuyển sang kênh cập nhật: {new_channel}")
+            status_label.configure(text=f"Đã chuyển sang kênh cập nhật: {new_channel}")
             
         show_update_channel_dialog(root, config, save_config, callback=on_channel_changed)
     except ImportError as e:
@@ -3683,7 +4205,7 @@ style = ttk.Style()
 
 # Tạo menu
 menubar = tk.Menu(root)
-root.config(menu=menubar)
+root.configure(menu=menubar)
 
 # Menu Cài đặt
 settings_menu = tk.Menu(menubar, tearoff=0)
@@ -3691,11 +4213,10 @@ menubar.add_cascade(label="Cài đặt", menu=settings_menu)
 settings_menu.add_command(label="Tùy chỉnh phím tắt", command=customize_shortcuts)
 settings_menu.add_command(label="Tùy chỉnh mã đề", command=customize_exam_codes)
 settings_menu.add_command(label="Tùy chỉnh tên cột", command=customize_columns)
+settings_menu.add_command(label="Đọc Excel", command=customize_excel_reading)
 settings_menu.add_command(label="Bảo mật", command=customize_security)
 settings_menu.add_separator()
 settings_menu.add_command(label="Chọn kênh cập nhật", command=choose_update_channel)
-settings_menu.add_command(label="Chế độ tối/sáng", command=lambda: toggle_theme(style))
-
 # Menu Chức năng
 function_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Chức năng", menu=function_menu)
@@ -3730,7 +4251,7 @@ print("Lên lịch kiểm tra cập nhật tự động sau 5 giây...")
 root.after(5000, check_updates_async)
 
 # Hiện thông báo khi đã sẵn sàng
-status_label.config(text="✅ Ứng dụng đã sẵn sàng! Đang kiểm tra cập nhật...")
+status_label.configure(text="✅ Ứng dụng đã sẵn sàng! Đang kiểm tra cập nhật...")
 
 # Bắt đầu cập nhật thống kê tự động
 root.after(1000, auto_update_stats)
@@ -3739,3 +4260,4 @@ root.after(1000, auto_update_stats)
 root.protocol("WM_DELETE_WINDOW", on_closing)
 root.mainloop()
     
+

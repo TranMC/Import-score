@@ -4,58 +4,58 @@ Module để quản lý các theme của ứng dụng (light/dark mode)
 
 # Theme mặc định cho chế độ sáng (light mode) - Modern & Stylish
 LIGHT_THEME = {
-    "primary": "#667EEA",           # Purple gradient start - hiện đại
-    "primary_dark": "#5A67D8",      # Purple đậm hơn
-    "secondary": "#48BB78",         # Green tươi sáng
-    "accent": "#F687B3",            # Pink accent cho điểm nhấn
-    "warning": "#F6AD55",           # Cam ấm áp
-    "error": "#FC8181",             # Đỏ san hô
-    "success": "#68D391",           # Xanh lá tươi
-    "info": "#4299E1",              # Xanh dương thông tin
-    "text": "#2D3748",              # Xám đen mềm
-    "text_secondary": "#718096",    # Xám trung tính
-    "background": "#F7FAFC",        # Nền trắng xanh nhẹ
-    "card": "#FFFFFF",              # Card trắng tinh
-    "card_hover": "#FAFBFC",        # Card hover nhẹ
-    "border": "#E2E8F0",            # Viền mềm mại
-    "hover": "#EDF2F7",             # Hover nhẹ nhàng
-    "active": "#5A67D8",            # Active tím đậm
-    "selected": "#D6BCFA",          # Selected tím nhạt
-    "treeview_bg": "#FFFFFF",       # Nền treeview
-    "treeview_selected": "#667EEA", # Tím gradient
-    "treeview_hover": "#F7FAFC",    # Hover nhẹ
-    "disabled": "#CBD5E0",          # Disabled xám nhạt
-    "gradient_start": "#667EEA",    # Gradient tím
-    "gradient_end": "#764BA2",      # Gradient tím đậm
-    "shadow": "#00000015"           # Shadow nhẹ
+    "primary": "#4F46E5",           # Indigo mềm mại, chuyên nghiệp
+    "primary_dark": "#3730A3",      # Indigo đậm khi hover/active
+    "secondary": "#10B981",         # Emerald tươi sáng
+    "accent": "#EC4899",            # Pink để tạo điểm nhấn
+    "warning": "#F59E0B",           # Amber ấm
+    "error": "#EF4444",             # Đỏ nhẹ
+    "success": "#10B981",           # Xanh lá
+    "info": "#3B82F6",              # Xanh dương sáng
+    "text": "#1F2937",              # Xám đen (nhẹ hơn đen tuyền)
+    "text_secondary": "#6B7280",    # Xám trung tính
+    "background": "#F3F4F6",        # Nền xám rất nhạt (Gray 100)
+    "card": "#FFFFFF",              # Nền card trắng tinh
+    "card_hover": "#F9FAFB",        # Hover mảng trắng
+    "border": "#E5E7EB",            # Viền siêu nhạt (Gray 200)
+    "hover": "#E0E7FF",             # Hover tím siêu nhạt (Indigo 100)
+    "active": "#4338CA",            # Nhấn đậm
+    "selected": "#EEF2FF",          # Selected nhạt (Indigo 50)
+    "treeview_bg": "#FFFFFF",       
+    "treeview_selected": "#4F46E5",
+    "treeview_hover": "#F9FAFB",    
+    "disabled": "#9CA3AF",          # Disabled xám
+    "gradient_start": "#4F46E5",    
+    "gradient_end": "#7C3AED",      
+    "shadow": "#00000010"           # Bóng mờ nhạt
 }
 
 # Theme cho chế độ tối (dark mode) - Modern & Stylish
 DARK_THEME = {
-    "primary": "#7C3AED",           # Purple vibrant
-    "primary_dark": "#6D28D9",      # Purple đậm
-    "secondary": "#10B981",         # Green emerald
-    "accent": "#EC4899",            # Pink neon
-    "warning": "#FBBF24",           # Vàng ấm
-    "error": "#EF4444",             # Đỏ neon
-    "success": "#34D399",           # Xanh lá neon
-    "info": "#3B82F6",              # Xanh dương sáng
-    "text": "#F9FAFB",              # Trắng gần tinh
-    "text_secondary": "#D1D5DB",    # Xám sáng
-    "background": "#111827",        # Nền xanh đen
-    "card": "#1F2937",              # Card xanh đậm
-    "card_hover": "#374151",        # Card hover
-    "border": "#374151",            # Viền xanh xám
-    "hover": "#374151",             # Hover xanh xám
-    "active": "#6D28D9",            # Active tím
-    "selected": "#A78BFA",          # Selected tím sáng
-    "treeview_bg": "#1F2937",       # Nền treeview
-    "treeview_selected": "#7C3AED", # Tím vibrant
-    "treeview_hover": "#374151",    # Hover xanh xám
-    "disabled": "#6B7280",          # Disabled xám
-    "gradient_start": "#7C3AED",    # Gradient tím
-    "gradient_end": "#EC4899",      # Gradient pink
-    "shadow": "#00000040"           # Shadow đậm hơn
+    "primary": "#818CF8",           # Indigo sáng cho nền tối
+    "primary_dark": "#6366F1",      # Indigo cơ bản
+    "secondary": "#34D399",         # Emerald neon
+    "accent": "#F472B6",            # Pink neon
+    "warning": "#FBBF24",           
+    "error": "#F87171",             
+    "success": "#34D399",           
+    "info": "#60A5FA",              
+    "text": "#FFFFFF",              # Trắng tinh khiết cho nổi bật nhất
+    "text_secondary": "#D1D5DB",    # Xám nhạt (Gray 300)
+    "background": "#111827",        # Nền đen sâu (Gray 900)
+    "card": "#1F2937",              # Card nổi (Gray 800)
+    "card_hover": "#374151",        # Hover (Gray 700)
+    "border": "#374151",            # Viền tối
+    "hover": "#312E81",             # Hover tím đen (Indigo 900)
+    "active": "#4F46E5",            
+    "selected": "#3730A3",          # Selected chìm (Indigo 800)
+    "treeview_bg": "#1F2937",       
+    "treeview_selected": "#6366F1", 
+    "treeview_hover": "#374151",    
+    "disabled": "#4B5563",          # Disabled tối màu
+    "gradient_start": "#818CF8",    
+    "gradient_end": "#F472B6",      
+    "shadow": "#00000060"           # Bóng mờ đậm
 }
 
 def get_theme(dark_mode=False):

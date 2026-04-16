@@ -1,7 +1,7 @@
 {
-    "version": "3.0-release",
+    "version": "3.1-release",
     "is_dev": false,
-    "build_date": "2025-11-24",
+    "build_date": "2026-04-16",
     "code_name": "Release Version",
     "release_channel": "stable"
 }
