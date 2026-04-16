@@ -217,9 +217,9 @@ def build_executable(version, config_files):
         '--exclude-module=notebook',
         '--exclude-module=jupyter',
         '--exclude-module=lib2to3',
-        # Loại trừ pyparsing.testing thay vì toàn bộ unittest
-        # (pyparsing.testing import unittest, nếu exclude unittest thì matplotlib crash)
-        '--exclude-module=pyparsing.testing',
+        # Thu thập toàn bộ pyparsing (bao gồm pyparsing.testing)
+        # vì matplotlib._fontconfig_pattern phụ thuộc vào chuỗi: pyparsing.__init__ -> pyparsing.testing
+        '--collect-all=pyparsing',
         # Loại trừ các file tự sinh (runtime-generated) để tắt WARNING không cần thiết
         '--exclude-module=pycparser.lextab',
         '--exclude-module=pycparser.yacctab',
@@ -261,6 +261,10 @@ def build_executable(version, config_files):
         'version_utils',
         'check_for_updates',
         'openpyxl.cell',
+        # pyparsing.testing được import trực tiếp bởi pyparsing.__init__ (phụ thuộc của matplotlib)
+        'pyparsing.testing',
+        'pyparsing.core',
+        'pyparsing.helpers',
     ]
     
     # Thêm hidden imports vào options
